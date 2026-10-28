@@ -1,0 +1,53 @@
+
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap");
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", sans-serif;
+  --font-serif: "Playfair Display", serif;
+  --font-poppins: "Poppins", sans-serif;
+  --font-playfair: "Playfair Display", serif;
+}
+
+body {
+  font-family: "Poppins", sans-serif;
+}
+
+.signup-mode-toggle__fill {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: signup-toggle-fill 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.signup-mode-toggle--customer .signup-mode-toggle__fill {
+  background: linear-gradient(90deg, rgb(230 0 89 / 18%), rgb(255 121 13 / 22%));
+}
+
+.signup-mode-toggle--vendor .signup-mode-toggle__fill {
+  background: linear-gradient(90deg, rgb(45 106 79 / 16%), rgb(82 183 136 / 24%));
+}
+
+@keyframes signup-toggle-fill {
+  0%, 12% {
+    transform: scaleX(0);
+  }
+  58%, 78% {
+    transform: scaleX(1);
+  }
+  100% {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signup-mode-toggle__fill {
+    animation: none;
+    transform: scaleX(0);
+  }
+}
