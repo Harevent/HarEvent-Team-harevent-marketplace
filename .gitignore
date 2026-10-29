@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Local and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Sensitive sample data
+sample data/test.users.json
