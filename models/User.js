@@ -1,40 +1,55 @@
 
 const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
+
+const E164_PHONE_PATTERN = /^\+[1-9]\d{1,14}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const userSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    email: {
+    firebaseUid: {
       type: String,
       required: true,
       unique: true,
-      lowercase: true,
-      trim: true
+      trim: true,
     },
-    password: {
+    phoneNumber: {
       type: String,
       required: true,
-      minlength: 6
+      unique: true,
+      trim: true,
+      match: [
+        E164_PHONE_PATTERN,
+        "Phone number must be in E.164 format (for example, +919812345678)",
+      ],
+    },
+    fullName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      match: [EMAIL_PATTERN, "Email address is invalid"],
     },
     role: {
       type: String,
-      enum: ["user", "vendor", "admin"],
-      default: "user"
-    }
+      required: true,
+      enum: ["customer", "vendor", "admin"],
+    },
+    accountStatus: {
+      type: String,
+      required: true,
+      enum: ["active", "suspended", "disabled"],
+      default: "active",
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
-
-// Hash the password before saving a new user
-userSchema.pre("save", async function () {
-  if (!this.isModified("password")) return;
-
-  this.password = await bcrypt.hash(this.password, 10);
-});
 
 module.exports = mongoose.model("User", userSchema);
