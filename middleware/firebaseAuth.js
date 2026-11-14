@@ -1,5 +1,8 @@
+
 const { firebaseAuth } = require("../config/firebase");
+
 const AUTHENTICATION_ERROR_CODES = new Set([
+  "auth/argument-error",
   "auth/invalid-id-token",
   "auth/id-token-expired",
   "auth/id-token-revoked",
@@ -10,6 +13,7 @@ async function verifyFirebaseToken(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
 
+    // Check whether the Authorization header exists.
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({
         success: false,
@@ -17,6 +21,7 @@ async function verifyFirebaseToken(req, res, next) {
       });
     }
 
+    // Extract the Firebase ID token.
     const token = authHeader.slice(7).trim();
 
     if (!token) {
@@ -26,8 +31,10 @@ async function verifyFirebaseToken(req, res, next) {
       });
     }
 
+    // Verify token and check whether it has been revoked.
     const decodedToken = await firebaseAuth.verifyIdToken(token, true);
 
+    // Ensure the token contains a verified phone identity.
     if (!decodedToken.uid || !decodedToken.phone_number) {
       return res.status(401).json({
         success: false,
@@ -35,6 +42,7 @@ async function verifyFirebaseToken(req, res, next) {
       });
     }
 
+    // Make verified Firebase details available to the next handler.
     req.firebaseUser = {
       firebaseUid: decodedToken.uid,
       phoneNumber: decodedToken.phone_number,
@@ -42,6 +50,7 @@ async function verifyFirebaseToken(req, res, next) {
 
     return next();
   } catch (error) {
+    // Invalid, expired, revoked, or malformed tokens return 401.
     if (AUTHENTICATION_ERROR_CODES.has(error?.code)) {
       return res.status(401).json({
         success: false,
@@ -49,6 +58,7 @@ async function verifyFirebaseToken(req, res, next) {
       });
     }
 
+    // Forward unexpected errors to the centralized error handler.
     return next(error);
   }
 }
