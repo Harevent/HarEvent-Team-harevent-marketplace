@@ -1,0 +1,44 @@
+[{
+  "_id": {
+    "$oid": "6ad8bd4e08c9dd7b6e93dafb"
+  },
+  "businessName": "Royal Catering Services",
+  "category": "Catering",
+  "description": "Catering services for weddings and parties",
+  "location": "Mumbai",
+  "contactEmail": "royal@example.com",
+  "contactPhone": "9876543210",
+  "price": 25000,
+  "createdBy": {
+    "$oid": "6ad89cf0ec4c2c87a8254a74"
+  },
+  "createdAt": {
+    "$date": "2026-10-21T13:25:34.659Z"
+  },
+  "updatedAt": {
+    "$date": "2026-10-21T13:25:34.659Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6ad8d7213c1cd7edd5faf473"
+  },
+  "businessName": "Royal Catering Services",
+  "category": "Catering",
+  "description": "Catering services for weddings and parties",
+  "location": "Mumbai",
+  "contactEmail": "royal@example.com",
+  "contactPhone": "9876543210",
+  "price": 25000,
+  "createdBy": {
+    "$oid": "6ad89cf0ec4c2c87a8254a74"
+  },
+  "createdAt": {
+    "$date": "2026-10-21T15:15:45.221Z"
+  },
+  "updatedAt": {
+    "$date": "2026-10-21T15:15:45.221Z"
+  },
+  "__v": 0
+}]

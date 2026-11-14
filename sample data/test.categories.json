@@ -1,0 +1,56 @@
+[{
+  "_id": {
+    "$oid": "6ad8adfa08c9dd7b6e93daef"
+  },
+  "name": "Weddings",
+  "description": "Wedding planning and celebration services",
+  "createdAt": {
+    "$date": "2026-10-21T12:20:10.441Z"
+  },
+  "updatedAt": {
+    "$date": "2026-10-21T15:14:16.482Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6ad8b21708c9dd7b6e93daf8"
+  },
+  "name": "Birthdays",
+  "description": "Birthday parties and celebrations",
+  "createdAt": {
+    "$date": "2026-10-21T12:37:43.069Z"
+  },
+  "updatedAt": {
+    "$date": "2026-10-21T12:37:43.069Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6ad8b26608c9dd7b6e93daf9"
+  },
+  "name": "Corporate Events",
+  "description": "Meetings and corporate functions",
+  "createdAt": {
+    "$date": "2026-10-21T12:39:02.294Z"
+  },
+  "updatedAt": {
+    "$date": "2026-10-21T12:39:02.294Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6ad8b29c08c9dd7b6e93dafa"
+  },
+  "name": "Parties",
+  "description": "Social gatherings and parties",
+  "createdAt": {
+    "$date": "2026-10-21T12:39:56.018Z"
+  },
+  "updatedAt": {
+    "$date": "2026-10-21T12:39:56.018Z"
+  },
+  "__v": 0
+}]
