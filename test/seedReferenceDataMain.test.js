@@ -175,8 +175,14 @@ async function assertMainCompare(t, runMain) {
   assert.equal(disconnect.mock.calls.length, 1);
   assert.equal(startSession.mock.calls.length, 0);
   assert.equal(write.mock.calls.length, 0);
-  const loggedReport = JSON.parse(log.mock.calls.at(-1).arguments[0]);
+  const reportLogs = log.mock.calls.filter(
+    ({ arguments: [message] }) =>
+      typeof message === "string" && message.trimStart().startsWith("{"),
+  );
+  assert.equal(reportLogs.length, 1, "Compare must log exactly one JSON report");
+  const loggedReport = JSON.parse(reportLogs[0].arguments[0]);
   assert.deepEqual(loggedReport.counts, report.counts);
+  assert.deepEqual(loggedReport, JSON.parse(JSON.stringify(report)));
 }
 
 test("main --compare passes the full taxonomy to the real seed planner without writes", async (t) => {
