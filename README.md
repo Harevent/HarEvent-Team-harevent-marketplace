@@ -158,7 +158,7 @@ Review the comparison report first. Configure these values in `.env` using the a
 
 ```dotenv
 NODE_ENV=development
-MONGODB_URI=mongodb://localhost:27017/harevent_test?replicaSet=rs0
+MONGODB_URI=mongodb://localhost:27017/harevent_dev?replicaSet=rs0
 SEED_DEV_DATABASE=harevent_dev
 ```
 
@@ -192,7 +192,7 @@ Active records outside the seed block apply until an explicit decision is provid
 }
 ```
 
-Replace the example IDs with IDs from comparison. Rename targets must exist in the seed; a service cannot move to another parent. Retain/deactivate decisions must identify existing records outside the seed. Conflicting decisions or occupied rename targets fail safely. Deactivation is blocked by vendor references (including inactive/deleted vendors), all EventType mappings and active child categories.
+Replace the example IDs with IDs from comparison. Rename targets must exist in the seed; a service cannot move to another parent. Retain/deactivate decisions must identify existing records outside the seed. Conflicting decisions or occupied rename targets fail safely. Deactivation is blocked by vendor references (including inactive/deleted vendors), all EventType mappings and all child categories (including inactive children).
 
 ```bash
 node scripts/seedReferenceData.js --compare --reconcile reconciliation.json
