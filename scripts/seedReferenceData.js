@@ -1,10 +1,7 @@
 const mongoose = require("mongoose");
 const Category = require("../models/Category");
 const EventType = require("../models/EventType");
-const {
-  parseArguments,
-  runSeed,
-} = require("./referenceDataSeed");
+const { parseArguments, runSeed } = require("./referenceDataSeed");
 
 function list(value) {
   return value
@@ -322,7 +319,9 @@ function validateReferenceData() {
     categoryBySlug.set(categorySlug, category);
 
     if (!category.services.length) {
-      throw new Error("Category " + category.name + " must define at least one service");
+      throw new Error(
+        "Category " + category.name + " must define at least one service",
+      );
     }
 
     const serviceSlugs = new Set();
@@ -360,8 +359,14 @@ function validateReferenceData() {
   const legacySlugs = new Set();
   for (const category of CATEGORY_DATA) {
     for (const legacySlug of category.legacySlugs || []) {
-      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(legacySlug) || categoryBySlug.has(legacySlug) || legacySlugs.has(legacySlug)) {
-        throw new Error("Invalid or conflicting legacy category slug: " + legacySlug);
+      if (
+        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(legacySlug) ||
+        categoryBySlug.has(legacySlug) ||
+        legacySlugs.has(legacySlug)
+      ) {
+        throw new Error(
+          "Invalid or conflicting legacy category slug: " + legacySlug,
+        );
       }
       legacySlugs.add(legacySlug);
     }
@@ -410,9 +415,7 @@ function validateReferenceData() {
 
     if (mappedCategorySlugs.size === 0) {
       throw new Error(
-        "Event Type " +
-          event.name +
-          " must map to at least one category",
+        "Event Type " + event.name + " must map to at least one category",
       );
     }
 
@@ -485,7 +488,8 @@ if (require.main === module) {
     // Connection errors can include credentials or hosts. Do not echo them.
     console.error(
       "Reference-data seed failed:",
-      error.seedMessage || "Database operation failed; review the local execution journal if one was created.",
+      error.seedMessage ||
+        "Database operation failed; review the local execution journal if one was created.",
     );
     process.exitCode = 1;
   });

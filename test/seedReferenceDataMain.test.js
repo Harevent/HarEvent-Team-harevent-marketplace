@@ -179,7 +179,11 @@ async function assertMainCompare(t, runMain) {
     ({ arguments: [message] }) =>
       typeof message === "string" && message.trimStart().startsWith("{"),
   );
-  assert.equal(reportLogs.length, 1, "Compare must log exactly one JSON report");
+  assert.equal(
+    reportLogs.length,
+    1,
+    "Compare must log exactly one JSON report",
+  );
   const loggedReport = JSON.parse(reportLogs[0].arguments[0]);
   assert.deepEqual(loggedReport.counts, report.counts);
   assert.deepEqual(loggedReport, JSON.parse(JSON.stringify(report)));

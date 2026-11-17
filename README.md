@@ -8,20 +8,22 @@ Backend API for the HarEvent vendor marketplace, built with Node.js, Express, an
 - Express 5
 - MongoDB Atlas and Mongoose
 - dotenv for environment configuration
-- bcryptjs and JSON Web Tokens (existing authentication)
+- - Firebase Admin SDK for Firebase ID token verification
+- Mongoose for database models and validation
 - Postman for API testing
 
 ## Current Features
 
-- User signup and login using email and password
-- Password hashing through the User model
-- JWT-protected API routes
-- Vendor create, read, update, and delete endpoints
+- Firebase ID token verification using Firebase Admin SDK
+- Trusted user identity resolution through the database
+- Role-based authorization middleware
+- Vendor profile and approval authorization middleware
+- Customer registration and vendor API functionality
 - Vendor filtering by category and location
-- Event category management endpoints
+- Event category and reference data management
 - Basic health endpoint at `GET /health`
 
-> Note: Firebase phone OTP authentication, vendor approval workflows, role-based authorization, and unique public vendor IDs are planned work and are not yet implemented.
+> Note: Firebase authentication middleware and the authorization foundation are implemented. Vendor profile and approval checks are handled through separate middleware.
 
 ## Requirements
 
@@ -75,9 +77,8 @@ Restart `npm run dev` after changing `.env`. The server and reference-data seed 
 
 ### Authentication (existing implementation)
 
-- `POST /api/auth/signup`
-- `POST /api/auth/login`
-
+- `POST /api/auth/verify` 
+- verifies Firebase ID tokens and resolves registered users.
 ### Vendors
 
 - `POST /api/vendors`
@@ -112,9 +113,11 @@ Use the included Postman collection for manual testing of the existing endpoints
 
 ## Security Notes
 
-- Keep local credentials in `.env`.
-- Never commit service-account keys, real user data, or production credentials.
-- Review authorization and validation before exposing endpoints publicly.
+- Verify Firebase ID tokens on protected API routes.
+- Resolve user roles and permissions from trusted database records.
+- Never trust client-provided roles, vendor IDs, or approval status.
+- Keep Firebase service-account credentials and database credentials secure.
+- Apply vendor profile and approval checks to protected vendor operations.
 
 ## Reference Data Seed
 
