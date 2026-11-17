@@ -84,16 +84,26 @@ const vendorSubscriptionSchema = new mongoose.Schema(
             if (
               !Array.isArray(values) ||
               !Array.isArray(this.selectedCategoryIds)
-            )
+            ) {
               return true;
+            }
+
             const selectedIds = new Set(this.selectedCategoryIds.map(String));
-            return values.every(
-              (entry) =>
-                !entry?.categoryId || selectedIds.has(String(entry.categoryId)),
+
+            const breakdownIds = new Set(
+              values
+                .filter((entry) => entry?.categoryId != null)
+                .map((entry) => String(entry.categoryId)),
+            );
+
+            return (
+              breakdownIds.size === selectedIds.size &&
+              breakdownIds.size === values.length &&
+              [...selectedIds].every((id) => breakdownIds.has(id))
             );
           },
           message:
-            "Each price breakdown category must be in selectedCategoryIds",
+            "Price breakdown must contain exactly one entry for every selected category",
         },
       ],
     },
