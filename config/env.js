@@ -6,6 +6,8 @@ const envSchema = z
 
     MONGODB_URI: z.string().trim().min(1, "MONGODB_URI is required"),
 
+    MONGODB_DNS_SERVERS: z.string().trim().optional(),
+
     FIREBASE_PROJECT_ID: z
       .string()
       .trim()
