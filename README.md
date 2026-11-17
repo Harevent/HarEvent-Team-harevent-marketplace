@@ -8,7 +8,7 @@ Backend API for the HarEvent vendor marketplace, built with Node.js, Express, an
 - Express 5
 - MongoDB Atlas and Mongoose
 - dotenv for environment configuration
-- - Firebase Admin SDK for Firebase ID token verification
+- Firebase Admin SDK for Firebase ID token verification
 - Mongoose for database models and validation
 - Postman for API testing
 
