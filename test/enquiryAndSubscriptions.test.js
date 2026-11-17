@@ -327,9 +327,11 @@ test("subscriptions require vendor, plan, categories, and a finite nonnegative f
   );
 });
 
-test("subscription categories and breakdown entries must be unique and consistent", async () => {
+test("subscription categories and breakdown entries must match exactly", async () => {
   const data = subscriptionData();
   const categoryId = data.selectedCategoryIds[0];
+
+  // Selected categories must be present and unique.
   for (const selectedCategoryIds of [[], [null], [categoryId, categoryId]]) {
     await assertInvalid(
       VendorSubscription,
@@ -337,11 +339,14 @@ test("subscription categories and breakdown entries must be unique and consisten
       "selectedCategoryIds",
     );
   }
+
   await assertInvalid(
     VendorSubscription,
     { ...data, selectedCategoryIds: ["bad-id"] },
     "selectedCategoryIds.0",
   );
+
+  // Duplicate breakdown entries are rejected.
   await assertInvalid(
     VendorSubscription,
     {
@@ -350,26 +355,68 @@ test("subscription categories and breakdown entries must be unique and consisten
     },
     "priceBreakdown",
   );
+
+  // Unselected breakdown categories are rejected.
   await assertInvalid(
     VendorSubscription,
-    { ...data, priceBreakdown: [{ categoryId: objectId(), amount: 10 }] },
+    {
+      ...data,
+      priceBreakdown: [{ categoryId: objectId(), amount: 10 }],
+    },
     "priceBreakdown",
   );
+
+  // Every selected category must have a breakdown entry.
+  await assertInvalid(
+    VendorSubscription,
+    { ...data, priceBreakdown: [] },
+    "priceBreakdown",
+  );
+
+  const firstCategory = objectId();
+  const secondCategory = objectId();
+  await assertInvalid(
+    VendorSubscription,
+    {
+      ...data,
+      selectedCategoryIds: [firstCategory, secondCategory],
+      priceBreakdown: [{ categoryId: firstCategory, amount: 100 }],
+    },
+    "priceBreakdown",
+  );
+
+  // Required breakdown amounts remain validated.
   await assertInvalid(
     VendorSubscription,
     { ...data, priceBreakdown: [{ categoryId }] },
     "priceBreakdown.0.amount",
   );
+
   await assertInvalid(
     VendorSubscription,
-    { ...data, priceBreakdown: [{ categoryId, amount: -1 }] },
+    {
+      ...data,
+      priceBreakdown: [{ categoryId, amount: -1 }],
+    },
     "priceBreakdown.0.amount",
   );
+
   await assertInvalid(
     VendorSubscription,
-    { ...data, priceBreakdown: [{ categoryId, amount: Infinity }] },
+    {
+      ...data,
+      priceBreakdown: [{ categoryId, amount: Infinity }],
+    },
     "priceBreakdown.0.amount",
   );
+
+  // A complete breakdown with a different final amount remains valid.
+  const validSubscription = new VendorSubscription({
+    ...data,
+    finalAmount: 75,
+  });
+
+  assert.equal(await validSubscription.validate(), undefined);
 });
 
 test("subscription totals do not assume an unapproved multi-category sum formula", async () => {
@@ -507,4 +554,22 @@ test("schemas declare unique pricing, one-active-subscription, and enquiry listi
   ]) {
     assert.equal(Model.schema.options.timestamps, true);
   }
+});
+
+test("zero-value category breakdowns are valid", async () => {
+  const firstCategory = objectId();
+  const secondCategory = objectId();
+
+  const subscription = new VendorSubscription(
+    subscriptionData({
+      selectedCategoryIds: [firstCategory, secondCategory],
+      priceBreakdown: [
+        { categoryId: firstCategory, amount: 0 },
+        { categoryId: secondCategory, amount: 0 },
+      ],
+      finalAmount: 0,
+    }),
+  );
+
+  assert.equal(await subscription.validate(), undefined);
 });
