@@ -1,16 +1,23 @@
 
 const express = require("express");
 const mongoose = require("mongoose");
+
 const Vendor = require("../models/Vendor");
 const authMiddleware = require("../middleware/auth");
 
+const { verifyFirebaseToken } = require("../middleware/firebaseAuth");
+const { registerVendor } = require("../controllers/vendorController");
+
 const router = express.Router();
 
-// Protect every vendor endpoint
-router.use(authMiddleware);
+// VENDOR REGISTRATION
+// Uses Firebase authentication because the vendor User record
+// does not exist until registration is completed.
+router.post("/register", verifyFirebaseToken, registerVendor);
 
-// CREATE VENDOR
-router.post("/", async (req, res) => {
+// LEGACY CREATE VENDOR
+// Retained temporarily with its existing JWT authentication.
+router.post("/", authMiddleware, async (req, res) => {
   try {
     const {
       businessName,
@@ -19,7 +26,7 @@ router.post("/", async (req, res) => {
       location,
       contactEmail,
       contactPhone,
-      price
+      price,
     } = req.body;
 
     if (
@@ -35,7 +42,7 @@ router.post("/", async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Please provide all required vendor fields."
+        message: "Please provide all required vendor fields.",
       });
     }
 
@@ -44,7 +51,7 @@ router.post("/", async (req, res) => {
     if (!Number.isFinite(numericPrice) || numericPrice < 0) {
       return res.status(400).json({
         success: false,
-        message: "Price must be a valid non-negative number."
+        message: "Price must be a valid non-negative number.",
       });
     }
 
@@ -56,32 +63,35 @@ router.post("/", async (req, res) => {
       contactEmail,
       contactPhone,
       price: numericPrice,
-      createdBy: req.user.id
+      createdBy: req.user.id,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Vendor created successfully",
-      vendor
+      vendor,
     });
   } catch (error) {
     if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
-        message: error.message
+        message: error.message,
       });
     }
 
     console.error("Create vendor error:", error.message);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
-      message: "Failed to create vendor"
+      message: "Failed to create vendor",
     });
   }
 });
 
-// GET ALL VENDORS + SEARCH/FILTER
-router.get("/", async (req, res) => {
+// GET ALL VENDORS (LEGACY)
+// This route remains JWT-protected temporarily.
+// The handoff's public approved-vendor listing will replace it.
+router.get("/", authMiddleware, async (req, res) => {
   try {
     const filter = {};
 
@@ -92,34 +102,34 @@ router.get("/", async (req, res) => {
     if (req.query.location) {
       filter.location = {
         $regex: req.query.location,
-        $options: "i"
+        $options: "i",
       };
     }
 
-    const vendors = await Vendor.find(filter)
-      .sort({ createdAt: -1 });
+    const vendors = await Vendor.find(filter).sort({ createdAt: -1 });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: vendors.length,
-      vendors
+      vendors,
     });
   } catch (error) {
     console.error("Get vendors error:", error.message);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
-      message: "Failed to retrieve vendors"
+      message: "Failed to retrieve vendors",
     });
   }
 });
 
-// GET ONE VENDOR
-router.get("/:id", async (req, res) => {
+// GET ONE VENDOR (LEGACY)
+router.get("/:id", authMiddleware, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid vendor ID"
+        message: "Invalid vendor ID",
       });
     }
 
@@ -128,29 +138,31 @@ router.get("/:id", async (req, res) => {
     if (!vendor) {
       return res.status(404).json({
         success: false,
-        message: "Vendor not found"
+        message: "Vendor not found",
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      vendor
+      vendor,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Get vendor error:", error.message);
+
+    return res.status(500).json({
       success: false,
-      message: "Failed to retrieve vendor"
+      message: "Failed to retrieve vendor",
     });
   }
 });
 
-// UPDATE VENDOR (creator only)
-router.put("/:id", async (req, res) => {
+// UPDATE VENDOR (LEGACY)
+router.put("/:id", authMiddleware, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid vendor ID"
+        message: "Invalid vendor ID",
       });
     }
 
@@ -161,10 +173,11 @@ router.put("/:id", async (req, res) => {
       "location",
       "contactEmail",
       "contactPhone",
-      "price"
+      "price",
     ];
 
     const updates = {};
+
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
         updates[field] = req.body[field];
@@ -174,7 +187,7 @@ router.put("/:id", async (req, res) => {
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Provide at least one field to update."
+        message: "Provide at least one field to update.",
       });
     }
 
@@ -185,7 +198,7 @@ router.put("/:id", async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Business name cannot be empty."
+        message: "Business name cannot be empty.",
       });
     }
 
@@ -196,7 +209,7 @@ router.put("/:id", async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Price must be a valid non-negative number."
+        message: "Price must be a valid non-negative number.",
       });
     }
 
@@ -207,71 +220,76 @@ router.put("/:id", async (req, res) => {
     const vendor = await Vendor.findOneAndUpdate(
       {
         _id: req.params.id,
-        createdBy: req.user.id
+        createdBy: req.user.id,
       },
       updates,
-      { new: true, runValidators: true }
+      {
+        new: true,
+        runValidators: true,
+      },
     );
 
     if (!vendor) {
       return res.status(404).json({
         success: false,
-        message: "Vendor not found or you are not its creator."
+        message: "Vendor not found or you are not its creator.",
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Vendor updated successfully",
-      vendor
+      vendor,
     });
   } catch (error) {
     if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
-        message: error.message
+        message: error.message,
       });
     }
 
     console.error("Update vendor error:", error.message);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
-      message: "Failed to update vendor"
+      message: "Failed to update vendor",
     });
   }
 });
 
-// DELETE VENDOR (creator only)
-router.delete("/:id", async (req, res) => {
+// DELETE VENDOR (LEGACY)
+router.delete("/:id", authMiddleware, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid vendor ID"
+        message: "Invalid vendor ID",
       });
     }
 
     const vendor = await Vendor.findOneAndDelete({
       _id: req.params.id,
-      createdBy: req.user.id
+      createdBy: req.user.id,
     });
 
     if (!vendor) {
       return res.status(404).json({
         success: false,
-        message: "Vendor not found or you are not its creator."
+        message: "Vendor not found or you are not its creator.",
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Vendor deleted successfully"
+      message: "Vendor deleted successfully",
     });
   } catch (error) {
     console.error("Delete vendor error:", error.message);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
-      message: "Failed to delete vendor"
+      message: "Failed to delete vendor",
     });
   }
 });
