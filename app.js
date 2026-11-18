@@ -6,6 +6,7 @@ const env = require("./config/env");
 const authRoutes = require("./routes/auth");
 const vendorRoutes = require("./routes/vendors");
 const categoryRoutes = require("./routes/categories");
+const customerRoutes = require("./routes/customers");
 
 const app = express();
 
@@ -55,9 +56,11 @@ app.get("/", (req, res) => {
   });
 });
 
+// API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/vendors", vendorRoutes);
 app.use("/api/categories", categoryRoutes);
+app.use("/api/customers", customerRoutes);
 
 // Handle unknown routes.
 app.use((req, res) => {
