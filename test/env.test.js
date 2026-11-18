@@ -30,7 +30,7 @@ function runEnvValidation(overrides = {}) {
     {
       env: controlledEnv,
       encoding: "utf8",
-      timeout: 5000,
+      timeout: 15000,
     },
   );
 

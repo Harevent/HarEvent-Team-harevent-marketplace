@@ -1,3 +1,4 @@
+
 const { firebaseAuth } = require("../config/firebase");
 
 const AUTHENTICATION_ERROR_CODES = new Set([
