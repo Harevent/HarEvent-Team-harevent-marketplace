@@ -25,10 +25,14 @@ Backend API for the HarEvent vendor marketplace, built with Node.js, Express, an
 
 > Note: Firebase authentication middleware and the authorization foundation are implemented. Vendor profile and approval checks are handled through separate middleware.
 
+
+
 ## Requirements
 
 - Node.js and npm
 - A MongoDB connection string
+- Firebase Admin SDK configuration
+- Frontend application URL for `CLIENT_URL`
 
 ## Local Setup
 
@@ -41,8 +45,9 @@ Backend API for the HarEvent vendor marketplace, built with Node.js, Express, an
 
 3. Copy `.env.example` to `.env`.
 4. Set `MONGODB_URI` in `.env` to your MongoDB connection string.
-5. Set `PORT` if needed; the default is `5000`.
-6. Start the development server:
+5. Set `CLIENT_URL` to the frontend application's URL.
+6. Set `PORT` if needed; the default is `5000`.
+7. Start the development server:
 
    ```bash
    npm run dev
@@ -53,6 +58,7 @@ For a production-style start, use:
 ```bash
 npm start
 ```
+Environment variables are validated centrally during application startup. Production configuration also requires `CLIENT_URL`.
 
 Do not commit `.env` or any real credentials.
 
@@ -76,9 +82,10 @@ Restart `npm run dev` after changing `.env`. The server and reference-data seed 
 - `GET /` - API welcome message
 
 ### Authentication (existing implementation)
-
-- `POST /api/auth/verify` 
+- `POST /api/auth/signup`
+- `POST /api/auth/login`
 - verifies Firebase ID tokens and resolves registered users.
+
 ### Vendors
 
 - `POST /api/vendors`
@@ -113,11 +120,16 @@ Use the included Postman collection for manual testing of the existing endpoints
 
 ## Security Notes
 
-- Verify Firebase ID tokens on protected API routes.
-- Resolve user roles and permissions from trusted database records.
-- Never trust client-provided roles, vendor IDs, or approval status.
-- Keep Firebase service-account credentials and database credentials secure.
-- Apply vendor profile and approval checks to protected vendor operations.
+- Keep local credentials and environment-specific configuration in `.env`.
+- Never commit service-account keys, real user data, or production credentials.
+- Firebase ID tokens are verified using the Firebase Admin SDK.
+- Application user identity and authorization details are resolved using server-side database records.
+- Never trust client-provided roles, vendor approval status, or account permissions.
+- Vendor profile existence and vendor approval are separate authorization checks. Use the appropriate middleware according to each route's requirements.
+- Existing business API routes still use legacy JWT authentication until their migration is completed in Deliverable B.
+- Review authentication, authorization, and request validation before exposing endpoints publicly.
+
+For the authentication identity contract and middleware responsibilities, see [Authentication and Authorization](docs/AUTHENTICATION.md).
 
 ## Reference Data Seed
 
@@ -220,3 +232,12 @@ If execution fails, inspect the printed status and journal. `aborted` means the 
 For recovery, keep application writes paused and compare the live records with `plan.ejson`. Verify `backup.ejson` against the checksum in the journal, and parse it as canonical Extended JSON (for example, MongoDB driver's `BSON.EJSON.parse(text, { relaxed: false })`). If restoration is needed, have an operator restore only the affected before-images and remove only confirmed inserts listed in the plan inside a new transaction, after checking for subsequent references or edits. Preserve IDs and unrelated records. Re-run comparison and validation before another apply. The script does not automatically restore a potentially committed transaction.
 
 Run the safety and failure-path tests with `npm test`. These use an in-memory driver double; real replica-set transaction behavior still needs verification against an isolated development MongoDB deployment.
+
+## Development Scope
+
+The backend work is organized into two deliverables:
+
+- **Deliverable A — Backend Foundation:** Project configuration, environment validation, MongoDB connection, Firebase authentication foundation, authorization middleware, security, error handling, automated tests, and documentation.
+- **Deliverable B — API Route Integration:** Integration of the new authentication and authorization middleware with business API routes, registration/controller coordination, and route-level integration testing.
+
+Deliverable A establishes the foundation. Deliverable B builds on that foundation after it has been reviewed and merged.
