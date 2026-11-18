@@ -82,8 +82,7 @@ Restart `npm run dev` after changing `.env`. The server and reference-data seed 
 - `GET /` - API welcome message
 
 ### Authentication (existing implementation)
-- `POST /api/auth/signup`
-- `POST /api/auth/login`
+- `POST /api/auth/verify`
 - verifies Firebase ID tokens and resolves registered users.
 
 ### Vendors
