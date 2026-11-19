@@ -3,295 +3,185 @@ const express = require("express");
 const mongoose = require("mongoose");
 
 const Vendor = require("../models/Vendor");
-const authMiddleware = require("../middleware/auth");
-
 const { verifyFirebaseToken } = require("../middleware/firebaseAuth");
+const { requireAuth } = require("../middleware/requireAuth");
+const { requireRole } = require("../middleware/requireRole");
 const { registerVendor } = require("../controllers/vendorController");
 
 const router = express.Router();
 
 // VENDOR REGISTRATION
-// Uses Firebase authentication because the vendor User record
-// does not exist until registration is completed.
+// Firebase authentication is required.
 router.post("/register", verifyFirebaseToken, registerVendor);
 
-// LEGACY CREATE VENDOR
-// Retained temporarily with its existing JWT authentication.
-router.post("/", authMiddleware, async (req, res) => {
+// PUBLIC: Get approved and active vendors for the homepage.
+// Supports category, event type, city, search and pagination.
+router.get("/", async (req, res, next) => {
   try {
     const {
-      businessName,
-      category,
-      description,
+      categoryId,
+      eventTypeId,
+      city,
       location,
-      contactEmail,
-      contactPhone,
-      price,
-    } = req.body;
+      search,
+      page = 1,
+      limit = 12,
+    } = req.query;
+
+    // Validate pagination.
+    const pageNumber = Number(page);
+    const limitNumber = Number(limit);
 
     if (
-      !businessName ||
-      !category ||
-      !description ||
-      !location ||
-      !contactEmail ||
-      !contactPhone ||
-      price === undefined ||
-      price === null ||
-      price === ""
+      !Number.isInteger(pageNumber) ||
+      pageNumber < 1 ||
+      !Number.isInteger(limitNumber) ||
+      limitNumber < 1 ||
+      limitNumber > 50
     ) {
       return res.status(400).json({
         success: false,
-        message: "Please provide all required vendor fields.",
+        message: "Page must be positive and limit must be between 1 and 50.",
       });
     }
 
-    const numericPrice = Number(price);
-
-    if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+    // Validate category ID.
+    if (categoryId && !mongoose.isValidObjectId(categoryId)) {
       return res.status(400).json({
         success: false,
-        message: "Price must be a valid non-negative number.",
+        message: "Invalid category ID.",
       });
     }
 
-    const vendor = await Vendor.create({
-      businessName,
-      category,
-      description,
-      location,
-      contactEmail,
-      contactPhone,
-      price: numericPrice,
-      createdBy: req.user.id,
-    });
-
-    return res.status(201).json({
-      success: true,
-      message: "Vendor created successfully",
-      vendor,
-    });
-  } catch (error) {
-    if (error.name === "ValidationError") {
+    // Validate event type ID.
+    if (eventTypeId && !mongoose.isValidObjectId(eventTypeId)) {
       return res.status(400).json({
         success: false,
-        message: error.message,
+        message: "Invalid event type ID.",
       });
     }
 
-    console.error("Create vendor error:", error.message);
+    // Only approved, active and non-deleted vendors are public.
+    const filter = {
+      approvalStatus: "approved",
+      isActive: true,
+      deletedAt: null,
+    };
 
-    return res.status(500).json({
-      success: false,
-      message: "Failed to create vendor",
-    });
-  }
-});
-
-// GET ALL VENDORS (LEGACY)
-// This route remains JWT-protected temporarily.
-// The handoff's public approved-vendor listing will replace it.
-router.get("/", authMiddleware, async (req, res) => {
-  try {
-    const filter = {};
-
-    if (req.query.category) {
-      filter.category = req.query.category;
+    if (categoryId) {
+      filter.categoryIds = categoryId;
     }
 
-    if (req.query.location) {
-      filter.location = {
-        $regex: req.query.location,
+    if (eventTypeId) {
+      filter.eventTypeIds = eventTypeId;
+    }
+
+    // Accept either city or location as the city search parameter.
+    const citySearch = city || location;
+
+    if (citySearch) {
+      const safeCity = citySearch
+        .trim()
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      filter["location.city"] = {
+        $regex: safeCity,
         $options: "i",
       };
     }
 
-    const vendors = await Vendor.find(filter).sort({ createdAt: -1 });
+    // Search business name and description.
+    if (search && search.trim()) {
+      const safeSearch = search
+        .trim()
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      filter.$or = [
+        { businessName: { $regex: safeSearch, $options: "i" } },
+        { description: { $regex: safeSearch, $options: "i" } },
+      ];
+    }
+
+    const skip = (pageNumber - 1) * limitNumber;
+
+    const [vendors, total] = await Promise.all([
+      Vendor.find(filter)
+        .select(
+          "publicVendorId businessName description categoryIds eventTypeIds contactPhone location serviceAreas images startingPrice currency createdAt",
+        )
+        .populate("categoryIds", "name slug")
+        .populate("eventTypeIds", "name slug")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNumber)
+        .lean(),
+
+      Vendor.countDocuments(filter),
+    ]);
 
     return res.status(200).json({
       success: true,
       count: vendors.length,
-      vendors,
+      total,
+      page: pageNumber,
+      limit: limitNumber,
+      totalPages: Math.ceil(total / limitNumber),
+      data: vendors,
     });
   } catch (error) {
-    console.error("Get vendors error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to retrieve vendors",
-    });
+    return next(error);
   }
 });
 
-// GET ONE VENDOR (LEGACY)
-router.get("/:id", authMiddleware, async (req, res) => {
-  try {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid vendor ID",
-      });
-    }
+// CUSTOMER: Get details of one publicly available vendor.
+router.get(
+  "/:id",
+  verifyFirebaseToken,
+  requireAuth,
+  requireRole("customer"),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
 
-    const vendor = await Vendor.findById(req.params.id);
-
-    if (!vendor) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor not found",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      vendor,
-    });
-  } catch (error) {
-    console.error("Get vendor error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to retrieve vendor",
-    });
-  }
-});
-
-// UPDATE VENDOR (LEGACY)
-router.put("/:id", authMiddleware, async (req, res) => {
-  try {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid vendor ID",
-      });
-    }
-
-    const allowedFields = [
-      "businessName",
-      "category",
-      "description",
-      "location",
-      "contactEmail",
-      "contactPhone",
-      "price",
-    ];
-
-    const updates = {};
-
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
+      // Validate vendor ID.
+      if (!mongoose.isValidObjectId(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid vendor ID.",
+        });
       }
-    }
 
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Provide at least one field to update.",
+      // Find only approved, active and non-deleted vendors.
+      const vendor = await Vendor.findOne({
+        _id: id,
+        approvalStatus: "approved",
+        isActive: true,
+        deletedAt: null,
+      })
+        .select(
+          "publicVendorId businessName description categoryIds selectedCategories eventTypeIds contactPhone contactEmail location serviceAreas images startingPrice currency createdAt",
+        )
+        .populate("categoryIds", "name slug description")
+        .populate("selectedCategories.categoryId", "name slug")
+        .populate("selectedCategories.serviceIds", "name slug")
+        .populate("eventTypeIds", "name slug")
+        .lean();
+
+      if (!vendor) {
+        return res.status(404).json({
+          success: false,
+          message: "Vendor not found.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: vendor,
       });
+    } catch (error) {
+      return next(error);
     }
-
-    if (
-      updates.businessName !== undefined &&
-      (typeof updates.businessName !== "string" ||
-        !updates.businessName.trim())
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Business name cannot be empty.",
-      });
-    }
-
-    if (
-      updates.price !== undefined &&
-      (!Number.isFinite(Number(updates.price)) ||
-        Number(updates.price) < 0)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Price must be a valid non-negative number.",
-      });
-    }
-
-    if (updates.price !== undefined) {
-      updates.price = Number(updates.price);
-    }
-
-    const vendor = await Vendor.findOneAndUpdate(
-      {
-        _id: req.params.id,
-        createdBy: req.user.id,
-      },
-      updates,
-      {
-        new: true,
-        runValidators: true,
-      },
-    );
-
-    if (!vendor) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor not found or you are not its creator.",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Vendor updated successfully",
-      vendor,
-    });
-  } catch (error) {
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        success: false,
-        message: error.message,
-      });
-    }
-
-    console.error("Update vendor error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to update vendor",
-    });
-  }
-});
-
-// DELETE VENDOR (LEGACY)
-router.delete("/:id", authMiddleware, async (req, res) => {
-  try {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid vendor ID",
-      });
-    }
-
-    const vendor = await Vendor.findOneAndDelete({
-      _id: req.params.id,
-      createdBy: req.user.id,
-    });
-
-    if (!vendor) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor not found or you are not its creator.",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Vendor deleted successfully",
-    });
-  } catch (error) {
-    console.error("Delete vendor error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to delete vendor",
-    });
-  }
-});
+  },
+);
 
 module.exports = router;

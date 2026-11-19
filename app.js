@@ -7,6 +7,7 @@ const authRoutes = require("./routes/auth");
 const vendorRoutes = require("./routes/vendors");
 const categoryRoutes = require("./routes/categories");
 const customerRoutes = require("./routes/customers");
+const eventTypeRoutes = require("./routes/eventTypes");
 
 const app = express();
 
@@ -61,6 +62,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/vendors", vendorRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/event-types", eventTypeRoutes);
 
 // Handle unknown routes.
 app.use((req, res) => {
