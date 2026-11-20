@@ -18,3 +18,6 @@ Thumbs.db
 
 # Sensitive sample data
 sample data/test.users.json
+
+# Local seed backups and execution reports
+.seed-recovery/

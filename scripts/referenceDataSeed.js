@@ -588,7 +588,13 @@ async function durableWrite(filename, value, flag = "wx") {
   }
 }
 
-async function createRecovery(dbName, snapshot, plan, recoveryRoot) {
+async function createRecovery(
+  dbName,
+  snapshot,
+  plan,
+  recoveryRoot,
+  collections = { categories: "categories", eventtypes: "events" },
+) {
   const directory = path.join(
     recoveryRoot,
     `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID()}`,
@@ -600,8 +606,12 @@ async function createRecovery(dbName, snapshot, plan, recoveryRoot) {
       version: 1,
       database: dbName,
       createdAt: new Date(),
-      categories: snapshot.categories,
-      eventtypes: snapshot.events,
+      ...Object.fromEntries(
+        Object.entries(collections).map(([collection, key]) => [
+          collection,
+          snapshot[key],
+        ]),
+      ),
     },
     { relaxed: false },
   );
@@ -629,11 +639,12 @@ async function createRecovery(dbName, snapshot, plan, recoveryRoot) {
     backup: "backup.ejson",
     backupSha256,
     changes: plan.changes.map(
-      ({ collection, action, id: documentId, slug, fields }) => ({
+      ({ collection, action, id: documentId, slug, identity, fields }) => ({
         collection,
         action,
         id: documentId,
         slug,
+        identity,
         fields,
       }),
     ),
@@ -641,7 +652,7 @@ async function createRecovery(dbName, snapshot, plan, recoveryRoot) {
   await durableWrite(
     path.join(directory, "plan.ejson"),
     EJSON.stringify(
-      { changes: plan.changes, stale: plan.stale },
+      { changes: plan.changes, stale: plan.stale || [] },
       { relaxed: false },
     ),
   );
@@ -943,6 +954,8 @@ module.exports = {
   parseArguments,
   verifyDevelopmentTarget,
   databaseFromUri,
+  equivalent,
+  durableWrite,
   validateReconciliation,
   buildPlan,
   validateProposedState,
