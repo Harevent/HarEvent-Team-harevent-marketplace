@@ -15,13 +15,9 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 .vscode/
-HarEvent_Updated_READMEs
-*.xlsx
-*.docx
-
 
 # Sensitive sample data
 sample data/test.users.json
 
-# Local reference-data backups and execution journals
+# Local seed backups and execution reports
 .seed-recovery/
