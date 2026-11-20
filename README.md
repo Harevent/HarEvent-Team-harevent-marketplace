@@ -232,6 +232,18 @@ For recovery, keep application writes paused and compare the live records with `
 
 Run the safety and failure-path tests with `npm test`. These use an in-memory driver double; real replica-set transaction behavior still needs verification against an isolated development MongoDB deployment.
 
+## Vendor Test Data Seed
+
+Generate separate, approved and active Vendor/User test records with the current schemas. The default batch contains 10 pairs; `--count 1` creates one Test Events record. Keep the same `--count` and `--seed` for all steps:
+
+```bash
+npm run seed:vendors -- --dry-run --count 10 --seed 42
+npm run seed:vendors -- --compare --count 10 --seed 42
+npm run seed:vendors -- --apply --confirm-dev --count 10 --seed 42
+```
+
+Apply requires seeded, active reference data, the intended development database, transaction support, and existing unique indexes. Generated identities are stable, reruns preserve existing records, and inserts use the verified backup and transaction process. See [Vendor Test Data Seed](docs/vendorSeedData.md) for setup, single-record commands, comparison behavior, recovery, and API test limitations.
+
 ## Development Scope
 
 The backend work is organized into two deliverables:
