@@ -67,7 +67,7 @@ app.use("/api/event-types", eventTypeRoutes);
 // Vendor category APIs (retain /api/categories for frontend compatibility)
 app.use("/api/vendor-categories", categoryRoutes);
 app.use("/api/customers", customerRoutes);
-app.use("/api/event-types", eventTypeRoutes);
+
 
 // Handle unknown routes.
 app.use((req, res) => {
