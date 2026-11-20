@@ -253,3 +253,126 @@ test("GET /api/event-types/:eventTypeId/vendor-categories returns 404 when event
     await closeServer(server);
   }
 });
+
+// 7. Public event type listing.
+test("GET /api/event-types returns active event types without authentication", async (t) => {
+  const eventTypes = [
+    { name: "Wedding", slug: "wedding", description: "Wedding events" },
+    { name: "Birthday", slug: "birthday", description: "Birthday events" },
+  ];
+
+  t.mock.method(EventType, "find", () => createQueryChain(eventTypes));
+
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/api/event-types`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.count, 2);
+    assert.equal(body.data[0].name, "Wedding");
+  } finally {
+    await closeServer(server);
+  }
+});
+
+// 8. Public main vendor categories using both supported paths.
+test("GET category routes return active main categories without authentication", async (t) => {
+  const categories = [
+    { name: "Photography", slug: "photography" },
+    { name: "Catering", slug: "catering" },
+  ];
+
+  const findMock = t.mock.method(
+    Category,
+    "find",
+    () => createQueryChain(categories),
+  );
+
+  const { server, baseUrl } = await startServer();
+
+  try {
+    for (const path of ["/api/categories", "/api/vendor-categories"]) {
+      const response = await fetch(`${baseUrl}${path}`);
+      const body = await response.json();
+
+      assert.equal(response.status, 200);
+      assert.equal(body.success, true);
+      assert.equal(body.count, 2);
+      assert.equal(body.data[0].name, "Photography");
+    }
+
+    assert.equal(findMock.mock.calls.length, 2);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+// 9. Public services under a main vendor category.
+test("GET /api/vendor-categories/:id/services returns active services", async (t) => {
+  const categoryId = new mongoose.Types.ObjectId();
+
+  const services = [
+    { name: "Wedding Photography", slug: "wedding-photography" },
+    { name: "Pre-wedding Photography", slug: "pre-wedding-photography" },
+  ];
+
+  t.mock.method(Category, "findOne", () => ({
+    lean: async () => ({
+      _id: categoryId,
+      name: "Photography",
+      parentId: null,
+      isActive: true,
+    }),
+  }));
+
+  let capturedFilter;
+
+  t.mock.method(Category, "find", (filter) => {
+    capturedFilter = filter;
+    return createQueryChain(services);
+  });
+
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(
+      `${baseUrl}/api/vendor-categories/${categoryId}/services`,
+    );
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.count, 2);
+    assert.equal(body.data[0].name, "Wedding Photography");
+
+    assert.equal(capturedFilter.parentId, categoryId.toString());
+    assert.equal(capturedFilter.isActive, true);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+// 10. Invalid category ID for services.
+test("GET /api/vendor-categories/:id/services rejects invalid IDs", async (t) => {
+  const findOneMock = t.mock.method(Category, "findOne");
+
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(
+      `${baseUrl}/api/vendor-categories/123/services`,
+    );
+    const body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.equal(body.success, false);
+    assert.equal(body.message, "Invalid category ID.");
+    assert.equal(findOneMock.mock.calls.length, 0);
+  } finally {
+    await closeServer(server);
+  }
+});
+
