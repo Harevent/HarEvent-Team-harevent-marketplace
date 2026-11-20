@@ -12,6 +12,7 @@ const {
   DEFAULT_COUNT,
   DEFAULT_SEED,
   parseArguments,
+  formatSeedError,
   buildPlan,
   runSeed,
 } = require("./vendorDataSeed");
@@ -30,14 +31,26 @@ const LOCATIONS = [
   { city: "Lucknow", state: "Uttar Pradesh", nearby: "Kanpur" },
 ];
 const BUSINESS_NAMES = [
-  "Saffron", "Lotus", "Marigold", "Celebration", "Amber", "Royal",
-  "Harmony", "Orchid", "Silver", "Sunrise", "Jasmine", "Festive",
+  "Saffron",
+  "Lotus",
+  "Marigold",
+  "Celebration",
+  "Amber",
+  "Royal",
+  "Harmony",
+  "Orchid",
+  "Silver",
+  "Sunrise",
+  "Jasmine",
+  "Festive",
 ];
 const FIRST_NAMES = ["Aarav", "Ananya", "Kabir", "Isha", "Rohan", "Meera"];
 const LAST_NAMES = ["Sharma", "Patel", "Rao", "Singh", "Das", "Joshi"];
 
 function hash(value) {
-  return createHash("sha256").update(NAMESPACE + "/" + value).digest("hex");
+  return createHash("sha256")
+    .update(NAMESPACE + "/" + value)
+    .digest("hex");
 }
 
 function objectId(value) {
@@ -50,8 +63,11 @@ function publicId(value) {
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = bytes.toString("hex");
   return [
-    hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16),
-    hex.slice(16, 20), hex.slice(20),
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
   ].join("-");
 }
 
@@ -75,14 +91,27 @@ function shuffled(values, random) {
   return result;
 }
 
-function generateVendorData({ count = DEFAULT_COUNT, seed = DEFAULT_SEED } = {}) {
-  if (!Number.isInteger(count) || count < 1 || count > 1000 ||
-      !Number.isInteger(seed) || seed < 0 || seed > 4294967295) {
-    const error = new Error("Vendor seed requires count 1-1000 and seed 0-4294967295.");
+function generateVendorData({
+  count = DEFAULT_COUNT,
+  seed = DEFAULT_SEED,
+} = {}) {
+  if (
+    !Number.isInteger(count) ||
+    count < 1 ||
+    count > 1000 ||
+    !Number.isInteger(seed) ||
+    seed < 0 ||
+    seed > 4294967295
+  ) {
+    const error = new Error(
+      "Vendor seed requires count 1-1000 and seed 0-4294967295.",
+    );
     error.seedMessage = error.message;
     throw error;
   }
-  const planner = CATEGORY_DATA.find((category) => category.name === "Event Planners");
+  const planner = CATEGORY_DATA.find(
+    (category) => category.name === "Event Planners",
+  );
   const categories = [
     planner,
     ...shuffled(
@@ -97,22 +126,29 @@ function generateVendorData({ count = DEFAULT_COUNT, seed = DEFAULT_SEED } = {})
     const random = randomFor(key);
     const pick = (values) => values[Math.floor(random() * values.length)];
     const category = categories[index % categories.length];
-    const services = index === 0
-      ? ["Wedding Planners"]
-      : shuffled(category.services, random).slice(0, 1 + Math.floor(random() * 2));
+    const services =
+      index === 0
+        ? ["Wedding Planners"]
+        : shuffled(category.services, random).slice(
+            0,
+            1 + Math.floor(random() * 2),
+          );
     const eligibleEvents = EVENT_TYPE_DATA.filter(
       (event) => event.isActive && event.categoryNames.includes(category.name),
     );
-    const events = index === 0
-      ? ["Wedding"]
-      : shuffled(eligibleEvents, random)
-        .slice(0, 1 + Math.floor(random() * 2))
-        .map((event) => event.name);
+    const events =
+      index === 0
+        ? ["Wedding"]
+        : shuffled(eligibleEvents, random)
+            .slice(0, 1 + Math.floor(random() * 2))
+            .map((event) => event.name);
     const location = pick(LOCATIONS);
     let phoneNumber;
     let attempt = 0;
     do {
-      const digits = parseInt(hash("phone/" + key + "/" + attempt).slice(0, 8), 16) % 1000000000;
+      const digits =
+        parseInt(hash("phone/" + key + "/" + attempt).slice(0, 8), 16) %
+        1000000000;
       phoneNumber = "+919" + String(digits).padStart(9, "0");
       attempt += 1;
     } while (phones.has(phoneNumber));
@@ -136,21 +172,36 @@ function generateVendorData({ count = DEFAULT_COUNT, seed = DEFAULT_SEED } = {})
         _id: objectId("vendor/" + key),
         userId,
         publicVendorId: publicId("public/" + key),
-        businessName: index === 0
-          ? "Test Events (Seed " + seed + "-" + number + ")"
-          : "Test " + pick(BUSINESS_NAMES) + " " + category.name + " (Seed " + seed + "-" + number + ")",
-        description: "Synthetic test vendor providing " + services.join(", ") + " in " + location.city + ".",
+        businessName:
+          index === 0
+            ? "Test Events (Seed " + seed + "-" + number + ")"
+            : "Test " +
+              pick(BUSINESS_NAMES) +
+              " " +
+              category.name +
+              " (Seed " +
+              seed +
+              "-" +
+              number +
+              ")",
+        description:
+          "Synthetic test vendor providing " +
+          services.join(", ") +
+          " in " +
+          location.city +
+          ".",
         contactPhone: phoneNumber,
         contactEmail: email,
         location: {
-          address: (10 + Math.floor(random() * 190)) + " Sample Event Road",
+          address: 10 + Math.floor(random() * 190) + " Sample Event Road",
           city: location.city,
           state: location.state,
           country: "India",
         },
         serviceAreas: [location.city, location.nearby],
         images: [],
-        startingPrice: index === 0 ? 5000 : 500 * (10 + Math.floor(random() * 191)),
+        startingPrice:
+          index === 0 ? 5000 : 500 * (10 + Math.floor(random() * 191)),
         currency: "INR",
         approvalStatus: "approved",
         rejectionReason: null,
@@ -160,10 +211,12 @@ function generateVendorData({ count = DEFAULT_COUNT, seed = DEFAULT_SEED } = {})
         deletedAt: null,
         __v: 0,
       },
-      categorySelections: [{
-        categorySlug: slugify(category.name),
-        serviceSlugs: services.map(slugify),
-      }],
+      categorySelections: [
+        {
+          categorySlug: slugify(category.name),
+          serviceSlugs: services.map(slugify),
+        },
+      ],
       eventTypeSlugs: events.map(slugify),
     };
   });
@@ -179,13 +232,20 @@ function previewSnapshot() {
     const mainId = objectId("preview-category/" + slug);
     mainIds.set(slug, mainId);
     categories.push({
-      _id: mainId, name: category.name, slug, parentId: null, isActive: true,
+      _id: mainId,
+      name: category.name,
+      slug,
+      parentId: null,
+      isActive: true,
     });
     for (const name of category.services) {
       const serviceSlug = slugify(name);
       categories.push({
         _id: objectId("preview-service/" + slug + "/" + serviceSlug),
-        name, slug: serviceSlug, parentId: mainId, isActive: true,
+        name,
+        slug: serviceSlug,
+        parentId: mainId,
+        isActive: true,
       });
     }
   }
@@ -194,7 +254,9 @@ function previewSnapshot() {
     name: event.name,
     slug: slugify(event.name),
     isActive: event.isActive,
-    vendorCategoryIds: event.categoryNames.map((name) => mainIds.get(slugify(name))),
+    vendorCategoryIds: event.categoryNames.map((name) =>
+      mainIds.get(slugify(name)),
+    ),
   }));
   return { categories, events, users: [], vendors: [] };
 }
@@ -210,7 +272,10 @@ async function main(argv = process.argv.slice(2)) {
   const vendorData = generateVendorData(options);
   if (options.mode === "dry-run") {
     const plan = await buildPlan({
-      snapshot: previewSnapshot(), vendorData, User, Vendor,
+      snapshot: previewSnapshot(),
+      vendorData,
+      User,
+      Vendor,
     });
     const report = {
       mode: "dry-run",
@@ -227,21 +292,27 @@ async function main(argv = process.argv.slice(2)) {
       })),
     };
     console.log(JSON.stringify(report, null, 2));
-    console.log("Dry run complete. Reference IDs are placeholders; compare/apply resolve database IDs. No database connection or writes were made.");
+    console.log(
+      "Dry run complete. Reference IDs are placeholders; compare/apply resolve database IDs. No database connection or writes were made.",
+    );
     return report;
   }
   require("dotenv").config({ quiet: true });
   return runSeed({
-    options, mongoose, User, Vendor, vendorData, env: process.env,
+    options,
+    mongoose,
+    User,
+    Vendor,
+    vendorData,
+    env: process.env,
   });
 }
 
 if (require.main === module) {
   main().catch((error) => {
-    // Driver errors can include credentials or hosts.
     console.error(
       "Vendor test-data seed failed:",
-      error.seedMessage || "Database operation failed; review the local execution journal if one was created.",
+      formatSeedError(error),
     );
     process.exitCode = 1;
   });

@@ -11,7 +11,7 @@ The pending/inactive example vendor `6afd80818bfcaf9d73fe8621`, its User `6afd80
 - [seedVendorData.js](../scripts/seedVendorData.js) generates repeatable random fixtures, builds the offline preview, and exposes the CLI.
 - [vendorDataSeed.js](../scripts/vendorDataSeed.js) resolves database references, validates the plan, compares existing records, and applies inserts.
 - [referenceDataSeed.js](../scripts/referenceDataSeed.js) supplies the shared development-target checks, transaction check, and durable verified backup/journal writer. Its reference-data behavior stays the same.
-- [vendorDataSeed.test.js](../test/vendorDataSeed.test.js) exercises the actual models, reference planner, vendor approval middleware, CLI, and transaction/recovery orchestration with a driver double.
+- [vendorDataSeed.test.js](../test/vendorDataSeed.test.js) exercises the actual models, reference planner, active approval defaults, CLI, and transaction/recovery orchestration with a driver double.
 
 ## Commands
 
@@ -85,7 +85,13 @@ npm test
 node --test test/vendorDataSeed.test.js
 ```
 
-Automated tests cover reproducible data, separate identities, real model validation, actual reference-seed relationships, approved-vendor access, read-only comparison, repeat runs, environment/index guards, complete backups, rollback, and uncertain commit outcomes. Tests use a driver double; server transaction and index behavior still requires an isolated development MongoDB deployment.
+Automated tests cover reproducible data, separate identities, real model validation, actual reference-seed relationships, active approval defaults, read-only comparison, repeat runs, environment/index guards, complete backups, rollback, uncertain commit outcomes, and error diagnostics that keep credentials private. Tests use a driver double; server transaction and index behavior still requires an isolated development MongoDB deployment.
+
+## Troubleshooting
+
+If apply reports a missing seed helper, keep the reference and vendor seed scripts in sync. The vendor runner requires `equivalent`, `durableWrite`, and the collection-aware `createRecovery` from `referenceDataSeed.js`. It checks missing helper exports before connecting.
+
+Failures report the operation that failed and a safe diagnosis for DNS, connectivity, authentication, permissions, duplicate keys, and local file errors. Raw MongoDB messages and connection strings are not printed. Run `--compare` with the same count/seed to check the current database state before retrying an apply; an earlier run may already have committed the requested records.
 
 Users are MongoDB test fixtures. Synthetic Firebase UIDs do not create Firebase Authentication accounts; authenticated API testing needs a matching test Firebase identity.
 
