@@ -10,6 +10,8 @@ const EventType = require("../models/EventType");
 
 const {
   registerVendor,
+  getMyVendorProfile,
+  updateMyVendorProfile,
 } = require("../controllers/vendorController");
 
 const categoryId = new mongoose.Types.ObjectId().toString();
@@ -445,4 +447,280 @@ test("transaction failure is passed to next and ends session", async (t) => {
   assert.equal(res.statusCode, null);
   assert.equal(nextError, transactionError);
   assert.equal(sessionEnded, true);
+});
+
+// --------------------------------------------------
+// GET and PUT: Authenticated vendor profile tests
+// --------------------------------------------------
+
+function createMockVendorProfile(overrides = {}) {
+  const vendor = {
+    categoryIds: [new mongoose.Types.ObjectId(categoryId)],
+    eventTypeIds: [new mongoose.Types.ObjectId(eventTypeId)],
+    selectedCategories: [],
+    businessName: "Test Events",
+    description: "Original description",
+    contactPhone: "+919876543210",
+    contactEmail: "business@example.com",
+    location: {
+      address: "Test Road",
+      city: "Mumbai",
+      state: "Maharashtra",
+      country: "India",
+      toObject() {
+        return {
+          address: this.address,
+          city: this.city,
+          state: this.state,
+          country: this.country,
+        };
+      },
+    },
+    serviceAreas: ["Mumbai"],
+    startingPrice: 5000,
+    approvalStatus: "pending",
+    isActive: false,
+
+    set(field, value) {
+      this[field] = value;
+    },
+
+    save: async function () {},
+
+    populate: async function () {
+      return this;
+    },
+
+    ...overrides,
+  };
+
+  return vendor;
+}
+
+async function runProfileUpdate(req, t, vendor) {
+  t.mock.method(Vendor, "findOne", async () => vendor);
+
+  t.mock.method(Category, "find", () => ({
+    select: async () => [
+      { _id: new mongoose.Types.ObjectId(categoryId) },
+    ],
+  }));
+
+  t.mock.method(EventType, "find", () => ({
+    select: async () => [
+      {
+        _id: new mongoose.Types.ObjectId(eventTypeId),
+        vendorCategoryIds: [
+          new mongoose.Types.ObjectId(categoryId),
+        ],
+      },
+    ],
+  }));
+
+  const res = createMockResponse();
+  let nextError = null;
+
+  await updateMyVendorProfile(req, res, (error) => {
+    nextError = error;
+  });
+
+  return { res, nextError };
+}
+
+function createProfileUpdateRequest(body = { description: "Updated description" }) {
+  return {
+    body,
+    user: {
+      userId: new mongoose.Types.ObjectId().toString(),
+    },
+  };
+}
+
+// 14. GET vendor profile successfully.
+test("GET vendor profile returns the authenticated vendor profile", async (t) => {
+  const vendor = { businessName: "Test Events" };
+
+  const query = {
+    select() {
+      return this;
+    },
+    populate() {
+      return this;
+    },
+    lean: async () => vendor,
+  };
+
+  t.mock.method(Vendor, "findOne", () => query);
+
+  const res = createMockResponse();
+  let nextError = null;
+
+  await getMyVendorProfile(
+    { user: { userId: "test-user-id" } },
+    res,
+    (error) => {
+      nextError = error;
+    },
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.responseBody.success, true);
+  assert.equal(res.responseBody.data, vendor);
+  assert.equal(nextError, null);
+});
+
+// 15. GET vendor profile when it does not exist.
+test("GET vendor profile returns 404 when profile is not found", async (t) => {
+  const query = {
+    select() {
+      return this;
+    },
+    populate() {
+      return this;
+    },
+    lean: async () => null,
+  };
+
+  t.mock.method(Vendor, "findOne", () => query);
+
+  const res = createMockResponse();
+
+  await getMyVendorProfile(
+    { user: { userId: "test-user-id" } },
+    res,
+    () => {},
+  );
+
+  assert.equal(res.statusCode, 404);
+  assert.equal(res.responseBody.success, false);
+});
+
+// 16. GET database error.
+test("GET vendor profile passes database errors to next", async (t) => {
+  const databaseError = new Error("Database unavailable");
+
+  t.mock.method(Vendor, "findOne", () => {
+    throw databaseError;
+  });
+
+  const res = createMockResponse();
+  let nextError = null;
+
+  await getMyVendorProfile(
+    { user: { userId: "test-user-id" } },
+    res,
+    (error) => {
+      nextError = error;
+    },
+  );
+
+  assert.equal(nextError, databaseError);
+  assert.equal(res.statusCode, null);
+});
+
+// 17. PUT vendor profile successfully.
+test("PUT vendor profile updates permitted fields", async (t) => {
+  const vendor = createMockVendorProfile();
+
+  const { res, nextError } = await runProfileUpdate(
+    createProfileUpdateRequest(),
+    t,
+    vendor,
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.responseBody.success, true);
+  assert.equal(vendor.description, "Updated description");
+  assert.equal(nextError, null);
+});
+
+// 18. PUT rejects an empty update.
+test("PUT vendor profile returns 400 for an empty update", async (t) => {
+  const vendor = createMockVendorProfile();
+
+  const { res } = await runProfileUpdate(
+    createProfileUpdateRequest({}),
+    t,
+    vendor,
+  );
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.responseBody.success, false);
+});
+
+// 19. Approved vendor requires reapproval after profile update.
+test("PUT changes approved vendor status to pending and inactive", async (t) => {
+  const vendor = createMockVendorProfile({
+    approvalStatus: "approved",
+    isActive: true,
+  });
+
+  const { res } = await runProfileUpdate(
+    createProfileUpdateRequest(),
+    t,
+    vendor,
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(vendor.approvalStatus, "pending");
+  assert.equal(vendor.isActive, false);
+});
+
+// 20. Pending vendor status remains unchanged.
+test("PUT keeps pending vendor status unchanged", async (t) => {
+  const vendor = createMockVendorProfile({
+    approvalStatus: "pending",
+    isActive: false,
+  });
+
+  const { res } = await runProfileUpdate(
+    createProfileUpdateRequest(),
+    t,
+    vendor,
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(vendor.approvalStatus, "pending");
+  assert.equal(vendor.isActive, false);
+});
+
+// 21. Rejected vendor status remains unchanged.
+test("PUT keeps rejected vendor status unchanged", async (t) => {
+  const vendor = createMockVendorProfile({
+    approvalStatus: "rejected",
+    isActive: false,
+  });
+
+  const { res } = await runProfileUpdate(
+    createProfileUpdateRequest(),
+    t,
+    vendor,
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(vendor.approvalStatus, "rejected");
+  assert.equal(vendor.isActive, false);
+});
+
+// 22. PUT database error.
+test("PUT vendor profile passes database errors to next", async (t) => {
+  const databaseError = new Error("Database unavailable");
+
+  t.mock.method(Vendor, "findOne", async () => {
+    throw databaseError;
+  });
+
+  const res = createMockResponse();
+  let nextError = null;
+
+  await updateMyVendorProfile(
+    createProfileUpdateRequest(),
+    res,
+    (error) => {
+      nextError = error;
+    },
+  );
+
+  assert.equal(nextError, databaseError);
+  assert.equal(res.statusCode, null);
 });
