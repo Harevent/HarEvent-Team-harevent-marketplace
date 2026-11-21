@@ -1,7 +1,5 @@
-
 const test = require("node:test");
 const assert = require("node:assert/strict");
-
 const mongoose = require("mongoose");
 
 const User = require("../models/User");
@@ -161,17 +159,12 @@ test("vendor registration creates User and Vendor records", async (t) => {
 
   t.mock.method(User, "create", async (documents) => {
     createdUserData = documents[0];
-
     return [{ ...documents[0], _id: userId }];
   });
 
   t.mock.method(Vendor, "create", async (documents) => {
     createdVendorData = documents[0];
-
-    return [{
-      ...documents[0],
-      _id: vendorId,
-    }];
+    return [{ ...documents[0], _id: vendorId }];
   });
 
   const { res, nextError } = await runController(
@@ -188,10 +181,7 @@ test("vendor registration creates User and Vendor records", async (t) => {
   assert.equal(res.statusCode, 201);
   assert.equal(res.responseBody.success, true);
 
-  assert.equal(
-    createdUserData.firebaseUid,
-    "verified-vendor-firebase-uid",
-  );
+  assert.equal(createdUserData.firebaseUid, "verified-vendor-firebase-uid");
   assert.equal(createdUserData.phoneNumber, "+919876543210");
   assert.equal(createdUserData.fullName, "Test Vendor");
   assert.equal(createdUserData.role, "vendor");
@@ -202,14 +192,8 @@ test("vendor registration creates User and Vendor records", async (t) => {
   assert.equal(createdVendorData.isActive, false);
   assert.ok(createdVendorData.publicVendorId);
 
-  assert.equal(
-    res.responseBody.data.userId.toString(),
-    userId.toString(),
-  );
-  assert.equal(
-    res.responseBody.data.vendorId.toString(),
-    vendorId.toString(),
-  );
+  assert.equal(res.responseBody.data.userId.toString(), userId.toString());
+  assert.equal(res.responseBody.data.vendorId.toString(), vendorId.toString());
   assert.equal(res.responseBody.data.role, "vendor");
   assert.equal(res.responseBody.data.approvalStatus, "pending");
 
@@ -510,23 +494,30 @@ async function runProfileUpdate(req, t, vendor, options = {}) {
     },
   }));
 
-  // Profile update mock: inactive existing event types can be preserved.
-  t.mock.method(EventType, "find", (filter) => ({
-    select: async () => {
-      const defaultEventType = {
-        _id: new mongoose.Types.ObjectId(eventTypeId),
-        vendorCategoryIds: [
-          new mongoose.Types.ObjectId(categoryId),
-        ],
-      };
+  // Capture the query so tests can verify inactive event types
+  // are not filtered out during unrelated profile updates.
+  let eventTypeFindFilter;
 
-      if (filter.isActive === true) {
-        return options.activeEventTypes ?? [defaultEventType];
-      }
+  t.mock.method(EventType, "find", (filter) => {
+    eventTypeFindFilter = filter;
 
-      return options.eventTypes ?? [defaultEventType];
-    },
-  }));
+    return {
+      select: async () => {
+        const defaultEventType = {
+          _id: new mongoose.Types.ObjectId(eventTypeId),
+          vendorCategoryIds: [
+            new mongoose.Types.ObjectId(categoryId),
+          ],
+        };
+
+        if (filter.isActive === true) {
+          return options.activeEventTypes ?? [defaultEventType];
+        }
+
+        return options.eventTypes ?? [defaultEventType];
+      },
+    };
+  });
 
   const res = createMockResponse();
   let nextError = null;
@@ -535,7 +526,7 @@ async function runProfileUpdate(req, t, vendor, options = {}) {
     nextError = error;
   });
 
-  return { res, nextError };
+  return { res, nextError, eventTypeFindFilter };
 }
 
 function createProfileUpdateRequest(
@@ -754,10 +745,7 @@ test("PUT allows unrelated profile updates when existing category and service ar
   assert.equal(res.statusCode, 200);
   assert.equal(vendor.description, "Updated description");
 
-  assert.equal(
-    vendor.categoryIds[0].toString(),
-    categoryId,
-  );
+  assert.equal(vendor.categoryIds[0].toString(), categoryId);
 
   assert.equal(
     vendor.selectedCategories[0].serviceIds[0].toString(),
@@ -817,6 +805,7 @@ test("PUT rejects an inactive service when service selection is updated", async 
 test("PUT allows unrelated profile updates when an existing event type is inactive", async (t) => {
   const existingEventType = {
     _id: new mongoose.Types.ObjectId(eventTypeId),
+    isActive: false, // Explicitly inactive
     vendorCategoryIds: [
       new mongoose.Types.ObjectId(categoryId),
     ],
@@ -826,7 +815,7 @@ test("PUT allows unrelated profile updates when an existing event type is inacti
     eventTypeIds: [new mongoose.Types.ObjectId(eventTypeId)],
   });
 
-  const { res, nextError } = await runProfileUpdate(
+  const { res, nextError, eventTypeFindFilter } = await runProfileUpdate(
     createProfileUpdateRequest({
       description: "Updated description",
     }),
@@ -844,6 +833,14 @@ test("PUT allows unrelated profile updates when an existing event type is inacti
   assert.equal(
     vendor.eventTypeIds[0].toString(),
     eventTypeId,
+  );
+
+  // Confirm that the query does NOT require active event types
+  // when the vendor is only updating an unrelated field.
+  assert.equal(
+    Object.hasOwn(eventTypeFindFilter, "isActive"),
+    false,
+    "Unrelated profile updates must not filter event types by isActive",
   );
 
   assert.equal(nextError, null);
