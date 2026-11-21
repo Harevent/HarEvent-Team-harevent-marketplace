@@ -1,3 +1,4 @@
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
@@ -66,11 +67,7 @@ function validVendorData() {
   };
 }
 
-async function runController(
-  req,
-  t,
-  options = {},
-) {
+async function runController(req, t, options = {}) {
   const res = createMockResponse();
   let nextError = null;
 
@@ -136,6 +133,10 @@ async function runController(
   return { res, nextError };
 }
 
+// --------------------------------------------------
+// Vendor registration tests
+// --------------------------------------------------
+
 // 1. Invalid request data.
 test("invalid vendor data returns 400", async (t) => {
   const startSession = t.mock.method(mongoose, "startSession");
@@ -188,7 +189,10 @@ test("vendor registration creates User and Vendor records", async (t) => {
   assert.equal(res.statusCode, 201);
   assert.equal(res.responseBody.success, true);
 
-  assert.equal(createdUserData.firebaseUid, "verified-vendor-firebase-uid");
+  assert.equal(
+    createdUserData.firebaseUid,
+    "verified-vendor-firebase-uid",
+  );
   assert.equal(createdUserData.phoneNumber, "+919876543210");
   assert.equal(createdUserData.fullName, "Test Vendor");
   assert.equal(createdUserData.role, "vendor");
@@ -199,8 +203,14 @@ test("vendor registration creates User and Vendor records", async (t) => {
   assert.equal(createdVendorData.isActive, false);
   assert.ok(createdVendorData.publicVendorId);
 
-  assert.equal(res.responseBody.data.userId.toString(), userId.toString());
-  assert.equal(res.responseBody.data.vendorId.toString(), vendorId.toString());
+  assert.equal(
+    res.responseBody.data.userId.toString(),
+    userId.toString(),
+  );
+  assert.equal(
+    res.responseBody.data.vendorId.toString(),
+    vendorId.toString(),
+  );
   assert.equal(res.responseBody.data.role, "vendor");
   assert.equal(res.responseBody.data.approvalStatus, "pending");
 
@@ -497,13 +507,19 @@ function createMockVendorProfile(overrides = {}) {
   return vendor;
 }
 
-async function runProfileUpdate(req, t, vendor) {
+async function runProfileUpdate(req, t, vendor, options = {}) {
   t.mock.method(Vendor, "findOne", async () => vendor);
 
-  t.mock.method(Category, "find", () => ({
-    select: async () => [
-      { _id: new mongoose.Types.ObjectId(categoryId) },
-    ],
+  t.mock.method(Category, "find", (filter) => ({
+    select: async () => {
+      if (filter.parentId === null) {
+        return options.categories ?? [
+          { _id: new mongoose.Types.ObjectId(categoryId) },
+        ];
+      }
+
+      return options.services ?? [];
+    },
   }));
 
   t.mock.method(EventType, "find", () => ({
@@ -527,7 +543,9 @@ async function runProfileUpdate(req, t, vendor) {
   return { res, nextError };
 }
 
-function createProfileUpdateRequest(body = { description: "Updated description" }) {
+function createProfileUpdateRequest(
+  body = { description: "Updated description" },
+) {
   return {
     body,
     user: {
@@ -648,8 +666,8 @@ test("PUT vendor profile returns 400 for an empty update", async (t) => {
   assert.equal(res.responseBody.success, false);
 });
 
-// 19. Approved vendor requires reapproval after profile update.
-test("PUT changes approved vendor status to pending and inactive", async (t) => {
+// 19. Approved vendor status remains unchanged.
+test("PUT preserves approved vendor status after profile update", async (t) => {
   const vendor = createMockVendorProfile({
     approvalStatus: "approved",
     isActive: true,
@@ -662,8 +680,8 @@ test("PUT changes approved vendor status to pending and inactive", async (t) => 
   );
 
   assert.equal(res.statusCode, 200);
-  assert.equal(vendor.approvalStatus, "pending");
-  assert.equal(vendor.isActive, false);
+  assert.equal(vendor.approvalStatus, "approved");
+  assert.equal(vendor.isActive, true);
 });
 
 // 20. Pending vendor status remains unchanged.
@@ -723,4 +741,88 @@ test("PUT vendor profile passes database errors to next", async (t) => {
 
   assert.equal(nextError, databaseError);
   assert.equal(res.statusCode, null);
+});
+
+// 23. Unrelated updates preserve existing inactive category and service references.
+test("PUT allows unrelated profile updates when existing category and service are inactive", async (t) => {
+  const inactiveServiceId = new mongoose.Types.ObjectId();
+
+  const vendor = createMockVendorProfile({
+    selectedCategories: [
+      {
+        categoryId: new mongoose.Types.ObjectId(categoryId),
+        serviceIds: [inactiveServiceId],
+      },
+    ],
+  });
+
+  const { res, nextError } = await runProfileUpdate(
+    createProfileUpdateRequest(),
+    t,
+    vendor,
+    {
+      categories: [],
+      services: [],
+    },
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(vendor.description, "Updated description");
+
+  assert.equal(
+    vendor.categoryIds[0].toString(),
+    categoryId,
+  );
+
+  assert.equal(
+    vendor.selectedCategories[0].serviceIds[0].toString(),
+    inactiveServiceId.toString(),
+  );
+
+  assert.equal(nextError, null);
+});
+
+// 24. Explicit selection of an inactive category is rejected.
+test("PUT rejects an inactive category when category selection is updated", async (t) => {
+  const vendor = createMockVendorProfile();
+
+  const { res } = await runProfileUpdate(
+    createProfileUpdateRequest({
+      categoryIds: [categoryId],
+    }),
+    t,
+    vendor,
+    {
+      categories: [],
+    },
+  );
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.responseBody.success, false);
+});
+
+// 25. Explicit selection of an inactive service is rejected.
+test("PUT rejects an inactive service when service selection is updated", async (t) => {
+  const inactiveServiceId = new mongoose.Types.ObjectId();
+
+  const vendor = createMockVendorProfile();
+
+  const { res } = await runProfileUpdate(
+    createProfileUpdateRequest({
+      selectedCategories: [
+        {
+          categoryId,
+          serviceIds: [inactiveServiceId.toString()],
+        },
+      ],
+    }),
+    t,
+    vendor,
+    {
+      services: [],
+    },
+  );
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.responseBody.success, false);
 });

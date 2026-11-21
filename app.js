@@ -8,6 +8,7 @@ const vendorRoutes = require("./routes/vendors");
 const categoryRoutes = require("./routes/categories");
 const customerRoutes = require("./routes/customers");
 const eventTypeRoutes = require("./routes/eventTypes");
+const serviceRoutes = require("./routes/serviceRoutes");
 
 const app = express();
 
@@ -63,6 +64,7 @@ app.use("/api/vendors", vendorRoutes);
 app.use("/api/categories", categoryRoutes);
 // Public event type APIs
 app.use("/api/event-types", eventTypeRoutes);
+app.use("/api/services", serviceRoutes);
 
 // Vendor category APIs (retain /api/categories for frontend compatibility)
 app.use("/api/vendor-categories", categoryRoutes);

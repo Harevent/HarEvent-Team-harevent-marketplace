@@ -346,22 +346,30 @@ async function updateMyVendorProfile(req, res, next) {
       categoryId: selection.categoryId.toString(),
       serviceIds: selection.serviceIds.map((id) => id.toString()),
     }));
+const categorySelectionChanged =
+  updates.categoryIds !== undefined ||
+  updates.selectedCategories !== undefined;
 
-    // 4. Validate active main vendor categories.
-    const categories = await Category.find({
-      _id: { $in: finalCategoryIds },
-      parentId: null,
-      isActive: true,
-    }).select("_id");
+const serviceSelectionChanged =
+  updates.selectedCategories !== undefined;
 
-    if (categories.length !== finalCategoryIds.length) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "One or more selected vendor categories are invalid or inactive.",
-      });
-    }
+  // 4. Validate active main vendor categories only when
+// the vendor submits new or changed category selections.
+if (categorySelectionChanged) {
+  const categories = await Category.find({
+    _id: { $in: finalCategoryIds },
+    parentId: null,
+    isActive: true,
+  }).select("_id");
 
+  if (categories.length !== finalCategoryIds.length) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "One or more selected vendor categories are invalid or inactive.",
+    });
+  }
+}
     // 5. Validate active event types.
     const eventTypes = await EventType.find({
       _id: { $in: finalEventTypeIds },
@@ -425,7 +433,7 @@ async function updateMyVendorProfile(req, res, next) {
       })),
     );
 
-    if (serviceChecks.length > 0) {
+    if (serviceChecks.length > 0 && serviceSelectionChanged) {
       const serviceIds = serviceChecks.map(
         (service) => service.serviceId,
       );
@@ -483,14 +491,10 @@ async function updateMyVendorProfile(req, res, next) {
       };
     }
 
-    // 9. An approved vendor must be reviewed again after profile changes.
-    if (vendor.approvalStatus === "approved") {
-      vendor.approvalStatus = "pending";
-      vendor.isActive = false;
-    }
-
-    // Pending and rejected statuses remain unchanged.
+       // 9. Preserve the vendor's existing approval and active status.
     await vendor.save();
+
+
 
     // 10. Return the updated profile.
     await vendor.populate([
