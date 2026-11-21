@@ -112,6 +112,7 @@ async function runController(req, t, options = {}) {
     },
   }));
 
+  // Registration mock: retain the original behavior.
   t.mock.method(EventType, "find", () => ({
     select: async () =>
       options.eventTypes || [
@@ -137,7 +138,6 @@ async function runController(req, t, options = {}) {
 // Vendor registration tests
 // --------------------------------------------------
 
-// 1. Invalid request data.
 test("invalid vendor data returns 400", async (t) => {
   const startSession = t.mock.method(mongoose, "startSession");
 
@@ -151,7 +151,6 @@ test("invalid vendor data returns 400", async (t) => {
   assert.equal(startSession.mock.calls.length, 0);
 });
 
-// 2. Successful vendor registration.
 test("vendor registration creates User and Vendor records", async (t) => {
   const userId = new mongoose.Types.ObjectId();
   const vendorId = new mongoose.Types.ObjectId();
@@ -217,7 +216,6 @@ test("vendor registration creates User and Vendor records", async (t) => {
   assert.equal(sessionEnded, true);
 });
 
-// 3. Existing customer identity.
 test("identity belonging to customer returns 403", async (t) => {
   const { res } = await runController(
     createMockRequest(),
@@ -237,7 +235,6 @@ test("identity belonging to customer returns 403", async (t) => {
   assert.equal(res.responseBody.success, false);
 });
 
-// 4. Existing admin identity.
 test("identity belonging to admin returns 403", async (t) => {
   const { res } = await runController(
     createMockRequest(),
@@ -257,7 +254,6 @@ test("identity belonging to admin returns 403", async (t) => {
   assert.equal(res.responseBody.success, false);
 });
 
-// 5. Existing vendor identity.
 test("existing vendor identity returns 409", async (t) => {
   const { res } = await runController(
     createMockRequest(),
@@ -276,7 +272,6 @@ test("existing vendor identity returns 409", async (t) => {
   assert.equal(res.statusCode, 409);
 });
 
-// 6. Invalid or inactive main category.
 test("invalid main category returns 400", async (t) => {
   const { res } = await runController(
     createMockRequest(),
@@ -288,7 +283,6 @@ test("invalid main category returns 400", async (t) => {
   assert.match(res.responseBody.message, /categories/i);
 });
 
-// 7. Invalid or inactive event type.
 test("invalid event type returns 400", async (t) => {
   const { res } = await runController(
     createMockRequest(),
@@ -300,7 +294,6 @@ test("invalid event type returns 400", async (t) => {
   assert.match(res.responseBody.message, /event types/i);
 });
 
-// 8. Category incompatible with selected event type.
 test("incompatible category and event type returns 400", async (t) => {
   const anotherCategoryId = new mongoose.Types.ObjectId().toString();
 
@@ -329,7 +322,6 @@ test("incompatible category and event type returns 400", async (t) => {
   assert.match(res.responseBody.message, /not available/i);
 });
 
-// 9. Service must belong to selected main category.
 test("service belonging to another category returns 400", async (t) => {
   const anotherCategoryId = new mongoose.Types.ObjectId().toString();
 
@@ -358,7 +350,6 @@ test("service belonging to another category returns 400", async (t) => {
   assert.match(res.responseBody.message, /services/i);
 });
 
-// 10. Selected service category must be in categoryIds.
 test("unselected main category in selectedCategories returns 400", async (t) => {
   const anotherCategoryId = new mongoose.Types.ObjectId().toString();
 
@@ -379,7 +370,6 @@ test("unselected main category in selectedCategories returns 400", async (t) => 
   assert.match(res.responseBody.message, /categoryIds/i);
 });
 
-// 11. Duplicate key error.
 test("duplicate database key returns 409", async (t) => {
   const duplicateError = Object.assign(
     new Error("Duplicate key"),
@@ -407,7 +397,6 @@ test("duplicate database key returns 409", async (t) => {
   assert.equal(sessionEnded, true);
 });
 
-// 12. Unexpected database error.
 test("unexpected database error is passed to next", async (t) => {
   const databaseError = new Error("Database unavailable");
 
@@ -424,7 +413,6 @@ test("unexpected database error is passed to next", async (t) => {
   assert.equal(nextError, databaseError);
 });
 
-// 13. Transaction failure.
 test("transaction failure is passed to next and ends session", async (t) => {
   const transactionError = new Error("Transaction commit failed");
   let sessionEnded = false;
@@ -522,15 +510,22 @@ async function runProfileUpdate(req, t, vendor, options = {}) {
     },
   }));
 
-  t.mock.method(EventType, "find", () => ({
-    select: async () => [
-      {
+  // Profile update mock: inactive existing event types can be preserved.
+  t.mock.method(EventType, "find", (filter) => ({
+    select: async () => {
+      const defaultEventType = {
         _id: new mongoose.Types.ObjectId(eventTypeId),
         vendorCategoryIds: [
           new mongoose.Types.ObjectId(categoryId),
         ],
-      },
-    ],
+      };
+
+      if (filter.isActive === true) {
+        return options.activeEventTypes ?? [defaultEventType];
+      }
+
+      return options.eventTypes ?? [defaultEventType];
+    },
   }));
 
   const res = createMockResponse();
@@ -554,7 +549,6 @@ function createProfileUpdateRequest(
   };
 }
 
-// 14. GET vendor profile successfully.
 test("GET vendor profile returns the authenticated vendor profile", async (t) => {
   const vendor = { businessName: "Test Events" };
 
@@ -587,7 +581,6 @@ test("GET vendor profile returns the authenticated vendor profile", async (t) =>
   assert.equal(nextError, null);
 });
 
-// 15. GET vendor profile when it does not exist.
 test("GET vendor profile returns 404 when profile is not found", async (t) => {
   const query = {
     select() {
@@ -613,7 +606,6 @@ test("GET vendor profile returns 404 when profile is not found", async (t) => {
   assert.equal(res.responseBody.success, false);
 });
 
-// 16. GET database error.
 test("GET vendor profile passes database errors to next", async (t) => {
   const databaseError = new Error("Database unavailable");
 
@@ -636,7 +628,6 @@ test("GET vendor profile passes database errors to next", async (t) => {
   assert.equal(res.statusCode, null);
 });
 
-// 17. PUT vendor profile successfully.
 test("PUT vendor profile updates permitted fields", async (t) => {
   const vendor = createMockVendorProfile();
 
@@ -652,7 +643,6 @@ test("PUT vendor profile updates permitted fields", async (t) => {
   assert.equal(nextError, null);
 });
 
-// 18. PUT rejects an empty update.
 test("PUT vendor profile returns 400 for an empty update", async (t) => {
   const vendor = createMockVendorProfile();
 
@@ -666,7 +656,6 @@ test("PUT vendor profile returns 400 for an empty update", async (t) => {
   assert.equal(res.responseBody.success, false);
 });
 
-// 19. Approved vendor status remains unchanged.
 test("PUT preserves approved vendor status after profile update", async (t) => {
   const vendor = createMockVendorProfile({
     approvalStatus: "approved",
@@ -684,7 +673,6 @@ test("PUT preserves approved vendor status after profile update", async (t) => {
   assert.equal(vendor.isActive, true);
 });
 
-// 20. Pending vendor status remains unchanged.
 test("PUT keeps pending vendor status unchanged", async (t) => {
   const vendor = createMockVendorProfile({
     approvalStatus: "pending",
@@ -702,7 +690,6 @@ test("PUT keeps pending vendor status unchanged", async (t) => {
   assert.equal(vendor.isActive, false);
 });
 
-// 21. Rejected vendor status remains unchanged.
 test("PUT keeps rejected vendor status unchanged", async (t) => {
   const vendor = createMockVendorProfile({
     approvalStatus: "rejected",
@@ -720,7 +707,6 @@ test("PUT keeps rejected vendor status unchanged", async (t) => {
   assert.equal(vendor.isActive, false);
 });
 
-// 22. PUT database error.
 test("PUT vendor profile passes database errors to next", async (t) => {
   const databaseError = new Error("Database unavailable");
 
@@ -743,7 +729,6 @@ test("PUT vendor profile passes database errors to next", async (t) => {
   assert.equal(res.statusCode, null);
 });
 
-// 23. Unrelated updates preserve existing inactive category and service references.
 test("PUT allows unrelated profile updates when existing category and service are inactive", async (t) => {
   const inactiveServiceId = new mongoose.Types.ObjectId();
 
@@ -782,7 +767,6 @@ test("PUT allows unrelated profile updates when existing category and service ar
   assert.equal(nextError, null);
 });
 
-// 24. Explicit selection of an inactive category is rejected.
 test("PUT rejects an inactive category when category selection is updated", async (t) => {
   const vendor = createMockVendorProfile();
 
@@ -801,7 +785,6 @@ test("PUT rejects an inactive category when category selection is updated", asyn
   assert.equal(res.responseBody.success, false);
 });
 
-// 25. Explicit selection of an inactive service is rejected.
 test("PUT rejects an inactive service when service selection is updated", async (t) => {
   const inactiveServiceId = new mongoose.Types.ObjectId();
 
@@ -825,4 +808,62 @@ test("PUT rejects an inactive service when service selection is updated", async 
 
   assert.equal(res.statusCode, 400);
   assert.equal(res.responseBody.success, false);
+});
+
+// --------------------------------------------------
+// Event type lifecycle regression tests
+// --------------------------------------------------
+
+test("PUT allows unrelated profile updates when an existing event type is inactive", async (t) => {
+  const existingEventType = {
+    _id: new mongoose.Types.ObjectId(eventTypeId),
+    vendorCategoryIds: [
+      new mongoose.Types.ObjectId(categoryId),
+    ],
+  };
+
+  const vendor = createMockVendorProfile({
+    eventTypeIds: [new mongoose.Types.ObjectId(eventTypeId)],
+  });
+
+  const { res, nextError } = await runProfileUpdate(
+    createProfileUpdateRequest({
+      description: "Updated description",
+    }),
+    t,
+    vendor,
+    {
+      eventTypes: [existingEventType],
+    },
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.responseBody.success, true);
+  assert.equal(vendor.description, "Updated description");
+
+  assert.equal(
+    vendor.eventTypeIds[0].toString(),
+    eventTypeId,
+  );
+
+  assert.equal(nextError, null);
+});
+
+test("PUT rejects an inactive event type when event type selection is updated", async (t) => {
+  const vendor = createMockVendorProfile();
+
+  const { res } = await runProfileUpdate(
+    createProfileUpdateRequest({
+      eventTypeIds: [eventTypeId],
+    }),
+    t,
+    vendor,
+    {
+      activeEventTypes: [],
+    },
+  );
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.responseBody.success, false);
+  assert.match(res.responseBody.message, /event types/i);
 });

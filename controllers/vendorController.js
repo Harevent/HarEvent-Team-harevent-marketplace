@@ -1,3 +1,4 @@
+
 const mongoose = require("mongoose");
 const { randomUUID } = require("crypto");
 
@@ -268,7 +269,6 @@ async function registerVendor(req, res, next) {
   }
 }
 
-
 // GET: Retrieve the authenticated vendor's own profile.
 async function getMyVendorProfile(req, res, next) {
   try {
@@ -346,41 +346,53 @@ async function updateMyVendorProfile(req, res, next) {
       categoryId: selection.categoryId.toString(),
       serviceIds: selection.serviceIds.map((id) => id.toString()),
     }));
-const categorySelectionChanged =
-  updates.categoryIds !== undefined ||
-  updates.selectedCategories !== undefined;
 
-const serviceSelectionChanged =
-  updates.selectedCategories !== undefined;
+    const categorySelectionChanged =
+      updates.categoryIds !== undefined ||
+      updates.selectedCategories !== undefined;
 
-  // 4. Validate active main vendor categories only when
-// the vendor submits new or changed category selections.
-if (categorySelectionChanged) {
-  const categories = await Category.find({
-    _id: { $in: finalCategoryIds },
-    parentId: null,
-    isActive: true,
-  }).select("_id");
+    const serviceSelectionChanged =
+      updates.selectedCategories !== undefined;
 
-  if (categories.length !== finalCategoryIds.length) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "One or more selected vendor categories are invalid or inactive.",
-    });
-  }
-}
-    // 5. Validate active event types.
-    const eventTypes = await EventType.find({
+    const eventTypeSelectionChanged =
+      updates.eventTypeIds !== undefined;
+
+    // 4. Validate active main vendor categories only when
+    // the vendor submits new or changed category selections.
+    if (categorySelectionChanged) {
+      const categories = await Category.find({
+        _id: { $in: finalCategoryIds },
+        parentId: null,
+        isActive: true,
+      }).select("_id");
+
+      if (categories.length !== finalCategoryIds.length) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "One or more selected vendor categories are invalid or inactive.",
+        });
+      }
+    }
+
+    // 5. Validate event types.
+    // Existing inactive event types are preserved during unrelated updates.
+    // Explicit event type changes require active event types.
+    const eventTypeFilter = {
       _id: { $in: finalEventTypeIds },
-      isActive: true,
-    }).select("_id vendorCategoryIds");
+      ...(eventTypeSelectionChanged ? { isActive: true } : {}),
+    };
+
+    const eventTypes = await EventType.find(eventTypeFilter).select(
+      "_id vendorCategoryIds",
+    );
 
     if (eventTypes.length !== finalEventTypeIds.length) {
       return res.status(400).json({
         success: false,
-        message:
-          "One or more selected event types are invalid or inactive.",
+        message: eventTypeSelectionChanged
+          ? "One or more selected event types are invalid or inactive."
+          : "One or more selected event types no longer exist.",
       });
     }
 
@@ -491,10 +503,8 @@ if (categorySelectionChanged) {
       };
     }
 
-       // 9. Preserve the vendor's existing approval and active status.
+    // 9. Preserve the vendor's existing approval and active status.
     await vendor.save();
-
-
 
     // 10. Return the updated profile.
     await vendor.populate([
@@ -506,8 +516,7 @@ if (categorySelectionChanged) {
 
     return res.status(200).json({
       success: true,
-      message:
-        "Vendor profile updated successfully.",
+      message: "Vendor profile updated successfully.",
       data: vendor,
     });
   } catch (error) {
