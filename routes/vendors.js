@@ -6,13 +6,29 @@ const Vendor = require("../models/Vendor");
 const { verifyFirebaseToken } = require("../middleware/firebaseAuth");
 const { requireAuth } = require("../middleware/requireAuth");
 const { requireRole } = require("../middleware/requireRole");
-const { registerVendor } = require("../controllers/vendorController");
-
+const { registerVendor,getMyVendorProfile,updateMyVendorProfile,} = require("../controllers/vendorController");
 const router = express.Router();
 
 // VENDOR REGISTRATION
 // Firebase authentication is required.
 router.post("/register", verifyFirebaseToken, registerVendor);
+// VENDOR: Get own profile.
+router.get(
+  "/me",
+  verifyFirebaseToken,
+  requireAuth,
+  requireRole("vendor"),
+  getMyVendorProfile,
+);
+
+// VENDOR: Update own profile.
+router.put(
+  "/me",
+  verifyFirebaseToken,
+  requireAuth,
+  requireRole("vendor"),
+  updateMyVendorProfile,
+);
 
 // PUBLIC: Get approved and active vendors for the homepage.
 // Supports category, event type, city, search and pagination.

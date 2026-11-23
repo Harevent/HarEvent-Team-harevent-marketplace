@@ -5,6 +5,8 @@
   "main": "server.js",
   "scripts": {
     "test": "node --test",
+    "seed:reference": "node scripts/seedReferenceData.js",
+    "seed:vendors": "node scripts/seedVendorData.js",
     "dev": "nodemon server.js",
     "start": "node server.js"
   },

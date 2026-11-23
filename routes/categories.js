@@ -1,7 +1,10 @@
+
 const express = require("express");
 const mongoose = require("mongoose");
 
 const Category = require("../models/Category");
+const Vendor = require("../models/Vendor");
+const EventType = require("../models/EventType");
 
 const { verifyFirebaseToken } = require("../middleware/firebaseAuth");
 const { requireAuth } = require("../middleware/requireAuth");
@@ -120,7 +123,11 @@ router.get("/:id", async (req, res, next) => {
 // ---------------------------------------------
 // ADMIN-ONLY ROUTES
 // ---------------------------------------------
-router.use(verifyFirebaseToken, requireAuth, requireRole("admin"));
+router.use(
+  verifyFirebaseToken,
+  requireAuth,
+  requireRole("admin"),
+);
 
 // ---------------------------------------------
 // ADMIN: Create a category or service
@@ -192,7 +199,7 @@ router.post("/", async (req, res, next) => {
 });
 
 // ---------------------------------------------
-// ADMIN: Update a category
+// ADMIN: Update a category or service
 // PUT /api/categories/:id
 // ---------------------------------------------
 router.put("/:id", async (req, res, next) => {
@@ -206,7 +213,23 @@ router.put("/:id", async (req, res, next) => {
       });
     }
 
-    const allowedFields = ["name", "slug", "description", "sortOrder", "isActive"];
+    const categoryExists = await Category.findById(id);
+
+    if (!categoryExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Category not found.",
+      });
+    }
+
+    const allowedFields = [
+      "name",
+      "slug",
+      "description",
+      "sortOrder",
+      "isActive",
+    ];
+
     const updates = {};
 
     for (const field of allowedFields) {
@@ -222,17 +245,13 @@ router.put("/:id", async (req, res, next) => {
       });
     }
 
+    // Deactivation preserves existing vendor and event type references.
+    // Inactive categories and services must not be selected in new registrations
+    // or updates. Existing relationships are not deleted or modified.
     const category = await Category.findByIdAndUpdate(id, updates, {
       new: true,
       runValidators: true,
     });
-
-    if (!category) {
-      return res.status(404).json({
-        success: false,
-        message: "Category not found.",
-      });
-    }
 
     return res.status(200).json({
       success: true,
@@ -259,7 +278,7 @@ router.put("/:id", async (req, res, next) => {
 });
 
 // ---------------------------------------------
-// ADMIN: Delete a category
+// ADMIN: Delete a category or service
 // DELETE /api/categories/:id
 // ---------------------------------------------
 router.delete("/:id", async (req, res, next) => {
@@ -282,6 +301,7 @@ router.delete("/:id", async (req, res, next) => {
       });
     }
 
+    // Prevent deleting a category that still has child services.
     const hasChildren = await Category.exists({
       parentId: id,
     });
@@ -293,11 +313,33 @@ router.delete("/:id", async (req, res, next) => {
       });
     }
 
+    // Prevent deleting records referenced by vendors or event types.
+    const [isUsedByVendor, isUsedByEventType] = await Promise.all([
+      Vendor.exists({
+        $or: [
+          { categoryIds: id },
+          { "selectedCategories.categoryId": id },
+          { "selectedCategories.serviceIds": id },
+        ],
+      }),
+      EventType.exists({
+        vendorCategoryIds: id,
+      }),
+    ]);
+
+    if (isUsedByVendor || isUsedByEventType) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Cannot delete a category or service that is currently referenced by vendors or event types.",
+      });
+    }
+
     await category.deleteOne();
 
     return res.status(200).json({
       success: true,
-      message: "Category deleted successfully.",
+      message: "Record deleted successfully.",
     });
   } catch (error) {
     return next(error);

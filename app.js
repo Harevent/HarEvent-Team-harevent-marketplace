@@ -8,7 +8,9 @@ const vendorRoutes = require("./routes/vendors");
 const categoryRoutes = require("./routes/categories");
 const customerRoutes = require("./routes/customers");
 const eventTypeRoutes = require("./routes/eventTypes");
-
+const serviceRoutes = require("./routes/serviceRoutes");
+const enquiryRoutes = require("./routes/enquiries");
+const adminVendorRoutes = require("./routes/adminVendors");
 const app = express();
 
 app.use(helmet());
@@ -61,8 +63,15 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/vendors", vendorRoutes);
 app.use("/api/categories", categoryRoutes);
-app.use("/api/customers", customerRoutes);
+// Public event type APIs
 app.use("/api/event-types", eventTypeRoutes);
+app.use("/api/services", serviceRoutes);
+
+// Vendor category APIs (retain /api/categories for frontend compatibility)
+app.use("/api/vendor-categories", categoryRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/enquiries", enquiryRoutes);
+app.use("/api/admin/vendors", adminVendorRoutes);
 
 // Handle unknown routes.
 app.use((req, res) => {
@@ -74,8 +83,7 @@ app.use((req, res) => {
 
 // Centralized error handler.
 function errorHandler(err, req, res, next) {
-  console.error("Unhandled error:", err.message);
-
+ console.error("Unhandled error:", err.message);
   // Preserve Express behavior if response headers were already sent.
   if (res.headersSent) {
     return next(err);

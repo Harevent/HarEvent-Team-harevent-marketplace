@@ -1,22 +1,39 @@
+
 const express = require("express");
 const mongoose = require("mongoose");
 
 const EventType = require("../models/EventType");
 const Category = require("../models/Category");
 
-const { getEventTypes } = require("../controllers/eventTypeController");
+const {
+  verifyFirebaseToken,
+} = require("../middleware/firebaseAuth");
+
+const { requireAuth } = require("../middleware/requireAuth");
+const { requireRole } = require("../middleware/requireRole");
+
+const {
+  getEventTypes,
+  createEventType,
+  updateEventType,
+} = require("../controllers/eventTypeController");
 
 const router = express.Router();
 
-// PUBLIC: Retrieve all active event types.
+// =============================================
+// PUBLIC ROUTES
+// =============================================
+
+// GET /api/event-types
+// Retrieve all active event types.
 router.get("/", getEventTypes);
 
-// PUBLIC: Get active vendor categories associated with an event type.
+// GET /api/event-types/:eventTypeId/vendor-categories
+// Retrieve active main vendor categories mapped to an event type.
 router.get("/:eventTypeId/vendor-categories", async (req, res, next) => {
   try {
     const { eventTypeId } = req.params;
 
-    // Validate event type ID.
     if (!mongoose.isValidObjectId(eventTypeId)) {
       return res.status(400).json({
         success: false,
@@ -24,7 +41,6 @@ router.get("/:eventTypeId/vendor-categories", async (req, res, next) => {
       });
     }
 
-    // Find the requested active event type.
     const eventType = await EventType.findOne({
       _id: eventTypeId,
       isActive: true,
@@ -37,7 +53,6 @@ router.get("/:eventTypeId/vendor-categories", async (req, res, next) => {
       });
     }
 
-    // Find active main vendor categories mapped to this event type.
     const categories = await Category.find({
       _id: { $in: eventType.vendorCategoryIds || [] },
       isActive: true,
@@ -61,5 +76,25 @@ router.get("/:eventTypeId/vendor-categories", async (req, res, next) => {
     return next(error);
   }
 });
+
+// =============================================
+// ADMIN-ONLY ROUTES
+// =============================================
+
+// All routes below require a verified Firebase token
+// and an authenticated admin account.
+router.use(
+  verifyFirebaseToken,
+  requireAuth,
+  requireRole("admin")
+);
+
+// POST /api/event-types
+// Create a new event type.
+router.post("/", createEventType);
+
+// PUT /api/event-types/:eventTypeId
+// Update or deactivate an existing event type.
+router.put("/:eventTypeId", updateEventType);
 
 module.exports = router;
