@@ -1,3 +1,4 @@
+
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
@@ -10,7 +11,9 @@ const customerRoutes = require("./routes/customers");
 const eventTypeRoutes = require("./routes/eventTypes");
 const serviceRoutes = require("./routes/serviceRoutes");
 const enquiryRoutes = require("./routes/enquiries");
+const vendorEnquiryRoutes = require("./routes/vendorEnquiries");
 const adminVendorRoutes = require("./routes/adminVendors");
+
 const app = express();
 
 app.use(helmet());
@@ -63,14 +66,12 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/vendors", vendorRoutes);
 app.use("/api/categories", categoryRoutes);
-// Public event type APIs
 app.use("/api/event-types", eventTypeRoutes);
 app.use("/api/services", serviceRoutes);
-
-// Vendor category APIs (retain /api/categories for frontend compatibility)
 app.use("/api/vendor-categories", categoryRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/enquiries", enquiryRoutes);
+app.use("/api/vendor/enquiries", vendorEnquiryRoutes);
 app.use("/api/admin/vendors", adminVendorRoutes);
 
 // Handle unknown routes.
@@ -83,8 +84,8 @@ app.use((req, res) => {
 
 // Centralized error handler.
 function errorHandler(err, req, res, next) {
- console.error("Unhandled error:", err.message);
-  // Preserve Express behavior if response headers were already sent.
+  console.error("Unhandled error:", err.message);
+
   if (res.headersSent) {
     return next(err);
   }
@@ -92,32 +93,19 @@ function errorHandler(err, req, res, next) {
   let status = 500;
   let message = "Internal server error";
 
-  // Malformed JSON request body.
   if (err.type === "entity.parse.failed") {
     status = 400;
     message = "Invalid JSON request body.";
-  }
-
-  // JSON request body exceeds the configured size limit.
-  else if (err.type === "entity.too.large") {
+  } else if (err.type === "entity.too.large") {
     status = 413;
     message = "Request body too large.";
-  }
-
-  // Mongoose document validation failure.
-  else if (err.name === "ValidationError") {
+  } else if (err.name === "ValidationError") {
     status = 400;
     message = "Validation failed.";
-  }
-
-  // MongoDB duplicate-key error.
-  else if (err.code === 11000) {
+  } else if (err.code === 11000) {
     status = 409;
     message = "Resource already exists.";
-  }
-
-  // Other errors with valid HTTP error statuses.
-  else {
+  } else {
     const errorStatus = err.status ?? err.statusCode;
 
     if (
@@ -127,7 +115,6 @@ function errorHandler(err, req, res, next) {
     ) {
       status = errorStatus;
 
-      // Never expose internal messages for server errors.
       if (status < 500) {
         message = err.message || "Request failed.";
       }
@@ -140,9 +127,7 @@ function errorHandler(err, req, res, next) {
   });
 }
 
-// Register the centralized error handler.
 app.use(errorHandler);
 
-// Export the Express app and the same handler for testing.
 module.exports = app;
 module.exports.errorHandler = errorHandler;
