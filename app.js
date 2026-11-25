@@ -12,6 +12,7 @@ const eventTypeRoutes = require("./routes/eventTypes");
 const serviceRoutes = require("./routes/serviceRoutes");
 const enquiryRoutes = require("./routes/enquiries");
 const vendorEnquiryRoutes = require("./routes/vendorEnquiries");
+const vendorDashboardRoutes = require("./routes/vendorDashboard");
 const adminVendorRoutes = require("./routes/adminVendors");
 
 const app = express();
@@ -72,6 +73,7 @@ app.use("/api/vendor-categories", categoryRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/enquiries", enquiryRoutes);
 app.use("/api/vendor/enquiries", vendorEnquiryRoutes);
+app.use("/api/vendor/dashboard", vendorDashboardRoutes);
 app.use("/api/admin/vendors", adminVendorRoutes);
 
 // Handle unknown routes.
