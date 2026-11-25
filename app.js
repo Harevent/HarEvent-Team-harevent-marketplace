@@ -9,7 +9,9 @@ const categoryRoutes = require("./routes/categories");
 const customerRoutes = require("./routes/customers");
 const eventTypeRoutes = require("./routes/eventTypes");
 const serviceRoutes = require("./routes/serviceRoutes");
-
+const enquiryRoutes = require("./routes/enquiries");
+const adminVendorRoutes = require("./routes/adminVendors");
+const vendorEnquiryRoutes = require("./routes/vendorEnquiries");
 const app = express();
 
 app.use(helmet());
@@ -69,8 +71,9 @@ app.use("/api/services", serviceRoutes);
 // Vendor category APIs (retain /api/categories for frontend compatibility)
 app.use("/api/vendor-categories", categoryRoutes);
 app.use("/api/customers", customerRoutes);
-
-
+app.use("/api/enquiries", enquiryRoutes);
+app.use("/api/admin/vendors", adminVendorRoutes);
+app.use("/api/vendor/enquiries", vendorEnquiryRoutes);
 // Handle unknown routes.
 app.use((req, res) => {
   res.status(404).json({
