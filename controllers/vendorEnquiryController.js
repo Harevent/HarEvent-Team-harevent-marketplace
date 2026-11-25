@@ -1,26 +1,27 @@
 
+const mongoose = require("mongoose");
 const Enquiry = require("../models/Enquiry");
 
-const OBJECT_ID_PATTERN = /^[0-9a-fA-F]{24}$/;
+const VALID_TRANSITIONS = {
+  pending: ["viewed", "accepted", "rejected"],
+  viewed: ["accepted", "rejected"],
+  accepted: [],
+  rejected: [],
+  cancelled: [],
+};
 
+// GET /api/vendor/enquiries
 async function getVendorEnquiries(req, res, next) {
   try {
-    const vendorId = req.user.vendorId;
-
-    if (!vendorId) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor profile not found.",
-      });
-    }
-
     const enquiries = await Enquiry.find({
-      vendorId,
-    }).sort({ createdAt: -1 });
+      vendorId: req.user.vendorId,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
 
     return res.status(200).json({
       success: true,
-      message: "Vendor enquiries retrieved successfully",
+      count: enquiries.length,
       data: enquiries,
     });
   } catch (error) {
@@ -28,44 +29,32 @@ async function getVendorEnquiries(req, res, next) {
   }
 }
 
+// GET /api/vendor/enquiries/:id
 async function getVendorEnquiryById(req, res, next) {
   try {
     const { id } = req.params;
-    const vendorId = req.user.vendorId;
 
-    if (!OBJECT_ID_PATTERN.test(id)) {
+    if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid enquiry ID",
+        message: "Invalid enquiry ID.",
       });
     }
 
-    if (!vendorId) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor profile not found.",
-      });
-    }
-
-    const enquiry = await Enquiry.findById(id);
+    const enquiry = await Enquiry.findOne({
+      _id: id,
+      vendorId: req.user.vendorId,
+    }).lean();
 
     if (!enquiry) {
       return res.status(404).json({
         success: false,
-        message: "Enquiry not found",
-      });
-    }
-
-    if (enquiry.vendorId.toString() !== vendorId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: "You are not authorized to view this enquiry",
+        message: "Enquiry not found.",
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Vendor enquiry retrieved successfully",
       data: enquiry,
     });
   } catch (error) {
@@ -73,100 +62,64 @@ async function getVendorEnquiryById(req, res, next) {
   }
 }
 
+// PATCH /api/vendor/enquiries/:id/status
 async function updateVendorEnquiryStatus(req, res, next) {
   try {
     const { id } = req.params;
-    const vendorId = req.user.vendorId;
-    const { status } = req.body || {};
+    const { status, vendorResponse } = req.body;
 
-    if (!OBJECT_ID_PATTERN.test(id)) {
+    if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid enquiry ID",
-      });
-    }
-
-    if (!vendorId) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor profile not found.",
-      });
-    }
-
-    const allowedRequestedStatuses = ["viewed", "accepted", "rejected"];
-
-    if (
-      !req.body ||
-      typeof req.body !== "object" ||
-      Array.isArray(req.body) ||
-      Object.keys(req.body).length !== 1 ||
-      typeof status !== "string" ||
-      !allowedRequestedStatuses.includes(status)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide a valid status: viewed, accepted or rejected.",
+        message: "Invalid enquiry ID.",
       });
     }
 
     const enquiry = await Enquiry.findOne({
       _id: id,
-      vendorId,
+      vendorId: req.user.vendorId,
     });
 
     if (!enquiry) {
       return res.status(404).json({
         success: false,
-        message: "Enquiry not found for this vendor.",
+        message: "Enquiry not found.",
       });
     }
 
-    const currentStatus = enquiry.status;
+    const allowedStatuses = VALID_TRANSITIONS[enquiry.status] || [];
 
-    const allowedTransitions = {
-      pending: ["viewed"],
-      viewed: ["accepted", "rejected"],
-      accepted: [],
-      rejected: [],
-      cancelled: [],
-    };
-
-    if (!allowedTransitions[currentStatus]?.includes(status)) {
-      return res.status(409).json({
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
         success: false,
-        message: `Enquiry status cannot be changed from ${currentStatus} to ${status}.`,
+        message: `Cannot change enquiry status from ${enquiry.status} to ${status}.`,
       });
     }
 
-    const updatedEnquiry = await Enquiry.findOneAndUpdate(
-      {
-        _id: id,
-        vendorId,
-        status: currentStatus,
-      },
-      {
-        $set: {
-          status,
-          statusUpdatedAt: new Date(),
-        },
-      },
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
-
-    if (!updatedEnquiry) {
-      return res.status(409).json({
+    if (
+      vendorResponse !== undefined &&
+      (typeof vendorResponse !== "string" ||
+        vendorResponse.trim().length > 2000)
+    ) {
+      return res.status(400).json({
         success: false,
-        message: "The enquiry status has changed. Please refresh and try again.",
+        message: "Vendor response must be a string of at most 2000 characters.",
       });
     }
+
+    enquiry.status = status;
+    enquiry.statusUpdatedAt = new Date();
+
+    if (vendorResponse !== undefined) {
+      enquiry.vendorResponse = vendorResponse.trim();
+    }
+
+    await enquiry.save();
 
     return res.status(200).json({
       success: true,
-      message: "Enquiry status updated successfully",
-      data: updatedEnquiry,
+      message: "Enquiry status updated successfully.",
+      data: enquiry,
     });
   } catch (error) {
     return next(error);

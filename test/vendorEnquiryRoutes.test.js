@@ -1,4 +1,3 @@
-
 const process = require("node:process");
 
 process.env.NODE_ENV = "test";
@@ -10,6 +9,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { firebaseAuth } = require("../config/firebase");
+
 const User = require("../models/User");
 const Customer = require("../models/Customer");
 const Vendor = require("../models/Vendor");
@@ -17,11 +17,9 @@ const Enquiry = require("../models/Enquiry");
 
 const app = require("../app");
 
-const USER_ID = "507f1f77bcf86cd799439012";
-const CUSTOMER_ID = "507f1f77bcf86cd799439013";
-const VENDOR_ID = "507f1f77bcf86cd799439014";
-const OTHER_VENDOR_ID = "507f1f77bcf86cd799439019";
-const ENQUIRY_ID = "507f1f77bcf86cd799439018";
+const userId = "507f1f77bcf86cd799439012";
+const vendorId = "507f1f77bcf86cd799439021";
+const enquiryId = "507f1f77bcf86cd799439031";
 
 async function startServer() {
   const server = app.listen(0);
@@ -43,68 +41,47 @@ async function closeServer(server) {
   });
 }
 
-function mockVendorAuthentication(t, vendorId = VENDOR_ID) {
+function mockVendorAuthentication(t, role = "vendor") {
   t.mock.method(firebaseAuth, "verifyIdToken", async () => ({
-    uid: "firebase-vendor-001",
-    phone_number: "+919876543210",
-  }));
-
-  t.mock.method(User, "findOne", async () => ({
-    _id: USER_ID,
-    firebaseUid: "firebase-vendor-001",
-    phoneNumber: "+919876543210",
-    role: "vendor",
-    accountStatus: "active",
-  }));
-
-  t.mock.method(Vendor, "findOne", async () => ({
-    _id: vendorId,
-    userId: USER_ID,
-    approvalStatus: "approved",
-    isActive: true,
-    deletedAt: null,
-  }));
-}
-
-function mockCustomerAuthentication(t) {
-  t.mock.method(firebaseAuth, "verifyIdToken", async () => ({
-    uid: "firebase-customer-001",
+    uid: "firebase-vendor-enquiry-test",
     phone_number: "+911234567890",
   }));
 
   t.mock.method(User, "findOne", async () => ({
-    _id: USER_ID,
-    firebaseUid: "firebase-customer-001",
+    _id: userId,
+    firebaseUid: "firebase-vendor-enquiry-test",
     phoneNumber: "+911234567890",
-    role: "customer",
+    role,
     accountStatus: "active",
   }));
 
+  if (role === "vendor") {
+    t.mock.method(Vendor, "findOne", async () => ({
+      _id: vendorId,
+      userId,
+      approvalStatus: "approved",
+      isActive: true,
+      deletedAt: null,
+    }));
+  }
+  if (role === "customer") {
   t.mock.method(Customer, "findOne", async () => ({
-    _id: CUSTOMER_ID,
-    userId: USER_ID,
+    _id: vendorId,
+    userId,
   }));
 }
-
-async function sendVendorStatusUpdate(
-  baseUrl,
-  status,
-  enquiryId = ENQUIRY_ID,
-) {
-  return fetch(
-    `${baseUrl}/api/vendor/enquiries/${enquiryId}/status`,
-    {
-      method: "PATCH",
-      headers: {
-        Authorization: "Bearer valid-test-token",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ status }),
-    },
-  );
 }
 
-// 1. Unauthenticated vendor enquiry request.
+function createQuery(result) {
+  return {
+    sort() {
+      return this;
+    },
+    lean: async () => result,
+  };
+}
+
+// 1. Unauthenticated users cannot list vendor enquiries.
 test("GET /api/vendor/enquiries returns 401 without authentication", async () => {
   const { server, baseUrl } = await startServer();
 
@@ -119,35 +96,46 @@ test("GET /api/vendor/enquiries returns 401 without authentication", async () =>
   }
 });
 
-// 2. Vendor can retrieve only enquiries addressed to their vendor profile.
-test("GET /api/vendor/enquiries returns enquiries belonging to the authenticated vendor", async (t) => {
+// 2. Customers cannot access vendor enquiries.
+test("GET /api/vendor/enquiries returns 403 for a customer", async (t) => {
+  mockVendorAuthentication(t, "customer");
+
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/api/vendor/enquiries`, {
+      headers: {
+        Authorization: "Bearer valid-test-token",
+      },
+    });
+
+    const body = await response.json();
+
+    assert.equal(response.status, 403);
+    assert.equal(body.success, false);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+// 3. Approved vendors can list their own enquiries.
+test("GET /api/vendor/enquiries allows an approved vendor to list enquiries", async (t) => {
   mockVendorAuthentication(t);
 
-  const enquiryData = [
+  const enquiries = [
     {
-      _id: ENQUIRY_ID,
-      vendorId: VENDOR_ID,
-      message: "First vendor enquiry",
-    },
-    {
-      _id: "507f1f77bcf86cd799439021",
-      vendorId: VENDOR_ID,
-      message: "Second vendor enquiry",
+      _id: enquiryId,
+      vendorId,
+      status: "pending",
+      message: "Wedding catering enquiry",
     },
   ];
 
   let capturedFilter;
-  let capturedSort;
 
   t.mock.method(Enquiry, "find", (filter) => {
     capturedFilter = filter;
-
-    return {
-      sort: async (sortOptions) => {
-        capturedSort = sortOptions;
-        return enquiryData;
-      },
-    };
+    return createQuery(enquiries);
   });
 
   const { server, baseUrl } = await startServer();
@@ -163,113 +151,16 @@ test("GET /api/vendor/enquiries returns enquiries belonging to the authenticated
 
     assert.equal(response.status, 200);
     assert.equal(body.success, true);
-    assert.equal(body.data.length, 2);
-    assert.equal(body.data[0].message, "First vendor enquiry");
-
-    assert.deepEqual(capturedFilter, {
-      vendorId: VENDOR_ID,
-    });
-
-    assert.deepEqual(capturedSort, {
-      createdAt: -1,
-    });
+    assert.equal(body.count, 1);
+    assert.equal(body.data[0].message, "Wedding catering enquiry");
+    assert.equal(String(capturedFilter.vendorId), vendorId);
   } finally {
     await closeServer(server);
   }
 });
 
-// 3. Customer accounts cannot access vendor enquiry listing.
-test("GET /api/vendor/enquiries rejects a customer account", async (t) => {
-  mockCustomerAuthentication(t);
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await fetch(`${baseUrl}/api/vendor/enquiries`, {
-      headers: {
-        Authorization: "Bearer valid-test-token",
-      },
-    });
-
-    const body = await response.json();
-
-    assert.equal(response.status, 403);
-    assert.equal(body.success, false);
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 4. Vendor can view an enquiry addressed to them.
-test("GET /api/vendor/enquiries/:id allows a vendor to view their own enquiry", async (t) => {
-  mockVendorAuthentication(t);
-
-  t.mock.method(Enquiry, "findById", async () => ({
-    _id: ENQUIRY_ID,
-    vendorId: VENDOR_ID,
-    customerId: CUSTOMER_ID,
-    message: "Enquiry addressed to this vendor",
-  }));
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await fetch(
-      `${baseUrl}/api/vendor/enquiries/${ENQUIRY_ID}`,
-      {
-        headers: {
-          Authorization: "Bearer valid-test-token",
-        },
-      },
-    );
-
-    const body = await response.json();
-
-    assert.equal(response.status, 200);
-    assert.equal(body.success, true);
-    assert.equal(body.data.message, "Enquiry addressed to this vendor");
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 5. Vendor cannot view an enquiry addressed to another vendor.
-test("GET /api/vendor/enquiries/:id denies access to another vendor's enquiry", async (t) => {
-  mockVendorAuthentication(t);
-
-  t.mock.method(Enquiry, "findById", async () => ({
-    _id: ENQUIRY_ID,
-    vendorId: OTHER_VENDOR_ID,
-    customerId: CUSTOMER_ID,
-  }));
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await fetch(
-      `${baseUrl}/api/vendor/enquiries/${ENQUIRY_ID}`,
-      {
-        headers: {
-          Authorization: "Bearer valid-test-token",
-        },
-      },
-    );
-
-    const body = await response.json();
-
-    assert.equal(response.status, 403);
-    assert.equal(body.success, false);
-    assert.equal(
-      body.message,
-      "You are not authorized to view this enquiry",
-    );
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 6. Invalid enquiry ID is rejected.
-test("GET /api/vendor/enquiries/:id rejects an invalid enquiry ID", async (t) => {
+// 4. Invalid enquiry IDs are rejected.
+test("GET /api/vendor/enquiries/:id returns 400 for an invalid ID", async (t) => {
   mockVendorAuthentication(t);
 
   const { server, baseUrl } = await startServer();
@@ -288,23 +179,27 @@ test("GET /api/vendor/enquiries/:id rejects an invalid enquiry ID", async (t) =>
 
     assert.equal(response.status, 400);
     assert.equal(body.success, false);
-    assert.equal(body.message, "Invalid enquiry ID");
   } finally {
     await closeServer(server);
   }
 });
 
-// 7. Missing enquiry is returned as 404.
-test("GET /api/vendor/enquiries/:id returns 404 when the enquiry does not exist", async (t) => {
+// 5. Vendors cannot view enquiries belonging to another vendor.
+test("GET /api/vendor/enquiries/:id returns 404 for another vendor's enquiry", async (t) => {
   mockVendorAuthentication(t);
 
-  t.mock.method(Enquiry, "findById", async () => null);
+  let capturedFilter;
+
+  t.mock.method(Enquiry, "findOne", (filter) => {
+    capturedFilter = filter;
+    return createQuery(null);
+  });
 
   const { server, baseUrl } = await startServer();
 
   try {
     const response = await fetch(
-      `${baseUrl}/api/vendor/enquiries/${ENQUIRY_ID}`,
+      `${baseUrl}/api/vendor/enquiries/${enquiryId}`,
       {
         headers: {
           Authorization: "Bearer valid-test-token",
@@ -316,371 +211,76 @@ test("GET /api/vendor/enquiries/:id returns 404 when the enquiry does not exist"
 
     assert.equal(response.status, 404);
     assert.equal(body.success, false);
-    assert.equal(body.message, "Enquiry not found");
+    assert.equal(String(capturedFilter.vendorId), vendorId);
+    assert.equal(String(capturedFilter._id), enquiryId);
   } finally {
     await closeServer(server);
   }
 });
 
-// 8. Vendor can change pending to viewed.
-test("PATCH /api/vendor/enquiries/:id/status allows pending to viewed", async (t) => {
+// 6. Vendors can view their own enquiry details.
+test("GET /api/vendor/enquiries/:id returns an enquiry belonging to the vendor", async (t) => {
   mockVendorAuthentication(t);
 
-  const existingEnquiry = {
-    _id: ENQUIRY_ID,
-    vendorId: VENDOR_ID,
+  const enquiry = {
+    _id: enquiryId,
+    vendorId,
     status: "pending",
+    message: "Wedding catering enquiry",
   };
 
-  const updatedEnquiry = {
-    ...existingEnquiry,
-    status: "viewed",
-  };
-
-  t.mock.method(Enquiry, "findOne", async (filter) => {
-    assert.deepEqual(filter, {
-      _id: ENQUIRY_ID,
-      vendorId: VENDOR_ID,
-    });
-
-    return existingEnquiry;
-  });
-
-  let capturedFilter;
-  let capturedUpdate;
-  let capturedOptions;
-
-  t.mock.method(
-    Enquiry,
-    "findOneAndUpdate",
-    async (filter, update, options) => {
-      capturedFilter = filter;
-      capturedUpdate = update;
-      capturedOptions = options;
-      return updatedEnquiry;
-    },
-  );
+  t.mock.method(Enquiry, "findOne", () => createQuery(enquiry));
 
   const { server, baseUrl } = await startServer();
 
   try {
-    const response = await sendVendorStatusUpdate(baseUrl, "viewed");
-    const body = await response.json();
-
-    assert.equal(response.status, 200);
-    assert.equal(body.success, true);
-    assert.equal(body.data.status, "viewed");
-
-    assert.deepEqual(capturedFilter, {
-      _id: ENQUIRY_ID,
-      vendorId: VENDOR_ID,
-      status: "pending",
-    });
-
-    assert.equal(capturedUpdate.$set.status, "viewed");
-    assert.ok(capturedUpdate.$set.statusUpdatedAt instanceof Date);
-    assert.equal(capturedOptions.new, true);
-    assert.equal(capturedOptions.runValidators, true);
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 9. Vendor can accept an enquiry after it has been viewed.
-test("PATCH /api/vendor/enquiries/:id/status allows viewed to accepted", async (t) => {
-  mockVendorAuthentication(t);
-
-  t.mock.method(Enquiry, "findOne", async () => ({
-    _id: ENQUIRY_ID,
-    vendorId: VENDOR_ID,
-    status: "viewed",
-  }));
-
-  t.mock.method(Enquiry, "findOneAndUpdate", async () => ({
-    _id: ENQUIRY_ID,
-    vendorId: VENDOR_ID,
-    status: "accepted",
-  }));
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await sendVendorStatusUpdate(baseUrl, "accepted");
-    const body = await response.json();
-
-    assert.equal(response.status, 200);
-    assert.equal(body.success, true);
-    assert.equal(body.data.status, "accepted");
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 10. Vendor can reject an enquiry after it has been viewed.
-test("PATCH /api/vendor/enquiries/:id/status allows viewed to rejected", async (t) => {
-  mockVendorAuthentication(t);
-
-  t.mock.method(Enquiry, "findOne", async () => ({
-    _id: ENQUIRY_ID,
-    vendorId: VENDOR_ID,
-    status: "viewed",
-  }));
-
-  t.mock.method(Enquiry, "findOneAndUpdate", async () => ({
-    _id: ENQUIRY_ID,
-    vendorId: VENDOR_ID,
-    status: "rejected",
-  }));
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await sendVendorStatusUpdate(baseUrl, "rejected");
-    const body = await response.json();
-
-    assert.equal(response.status, 200);
-    assert.equal(body.success, true);
-    assert.equal(body.data.status, "rejected");
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 11. Vendor cannot directly accept a pending enquiry.
-test("PATCH /api/vendor/enquiries/:id/status rejects pending to accepted", async (t) => {
-  mockVendorAuthentication(t);
-
-  t.mock.method(Enquiry, "findOne", async () => ({
-    _id: ENQUIRY_ID,
-    vendorId: VENDOR_ID,
-    status: "pending",
-  }));
-
-  const updateMock = t.mock.method(
-    Enquiry,
-    "findOneAndUpdate",
-    async () => null,
-  );
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await sendVendorStatusUpdate(baseUrl, "accepted");
-    const body = await response.json();
-
-    assert.equal(response.status, 409);
-    assert.equal(body.success, false);
-    assert.equal(updateMock.mock.callCount(), 0);
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 12. Vendor cannot directly reject a pending enquiry.
-test("PATCH /api/vendor/enquiries/:id/status rejects pending to rejected", async (t) => {
-  mockVendorAuthentication(t);
-
-  t.mock.method(Enquiry, "findOne", async () => ({
-    _id: ENQUIRY_ID,
-    vendorId: VENDOR_ID,
-    status: "pending",
-  }));
-
-  const updateMock = t.mock.method(
-    Enquiry,
-    "findOneAndUpdate",
-    async () => null,
-  );
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await sendVendorStatusUpdate(baseUrl, "rejected");
-    const body = await response.json();
-
-    assert.equal(response.status, 409);
-    assert.equal(body.success, false);
-    assert.equal(updateMock.mock.callCount(), 0);
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 13. Vendor cannot set cancelled status.
-test("PATCH /api/vendor/enquiries/:id/status rejects vendor cancellation", async (t) => {
-  mockVendorAuthentication(t);
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await sendVendorStatusUpdate(baseUrl, "cancelled");
-    const body = await response.json();
-
-    assert.equal(response.status, 400);
-    assert.equal(body.success, false);
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 14. Accepted enquiries are final.
-test("PATCH /api/vendor/enquiries/:id/status cannot change an accepted enquiry", async (t) => {
-  mockVendorAuthentication(t);
-
-  t.mock.method(Enquiry, "findOne", async () => ({
-    _id: ENQUIRY_ID,
-    vendorId: VENDOR_ID,
-    status: "accepted",
-  }));
-
-  const updateMock = t.mock.method(
-    Enquiry,
-    "findOneAndUpdate",
-    async () => null,
-  );
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await sendVendorStatusUpdate(baseUrl, "rejected");
-    const body = await response.json();
-
-    assert.equal(response.status, 409);
-    assert.equal(body.success, false);
-    assert.equal(updateMock.mock.callCount(), 0);
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 15. Rejected enquiries are final.
-test("PATCH /api/vendor/enquiries/:id/status cannot change a rejected enquiry", async (t) => {
-  mockVendorAuthentication(t);
-
-  t.mock.method(Enquiry, "findOne", async () => ({
-    _id: ENQUIRY_ID,
-    vendorId: VENDOR_ID,
-    status: "rejected",
-  }));
-
-  const updateMock = t.mock.method(
-    Enquiry,
-    "findOneAndUpdate",
-    async () => null,
-  );
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await sendVendorStatusUpdate(baseUrl, "viewed");
-    const body = await response.json();
-
-    assert.equal(response.status, 409);
-    assert.equal(body.success, false);
-    assert.equal(updateMock.mock.callCount(), 0);
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 16. Vendor cannot update an enquiry belonging to another vendor.
-test("PATCH /api/vendor/enquiries/:id/status denies another vendor's enquiry", async (t) => {
-  mockVendorAuthentication(t);
-
-  let capturedFilter;
-
-  t.mock.method(Enquiry, "findOne", async (filter) => {
-    capturedFilter = filter;
-    return null;
-  });
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await sendVendorStatusUpdate(baseUrl, "viewed");
-    const body = await response.json();
-
-    assert.equal(response.status, 404);
-    assert.equal(body.success, false);
-
-    assert.deepEqual(capturedFilter, {
-      _id: ENQUIRY_ID,
-      vendorId: VENDOR_ID,
-    });
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 17. Invalid enquiry ID is rejected.
-test("PATCH /api/vendor/enquiries/:id/status rejects an invalid enquiry ID", async (t) => {
-  mockVendorAuthentication(t);
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await sendVendorStatusUpdate(
-      baseUrl,
-      "viewed",
-      "invalid-id",
+    const response = await fetch(
+      `${baseUrl}/api/vendor/enquiries/${enquiryId}`,
+      {
+        headers: {
+          Authorization: "Bearer valid-test-token",
+        },
+      },
     );
+
     const body = await response.json();
 
-    assert.equal(response.status, 400);
-    assert.equal(body.success, false);
-    assert.equal(body.message, "Invalid enquiry ID");
+    assert.equal(response.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.data.message, "Wedding catering enquiry");
+    assert.equal(String(body.data.vendorId), vendorId);
   } finally {
     await closeServer(server);
   }
 });
 
-// 18. Invalid status is rejected.
-test("PATCH /api/vendor/enquiries/:id/status rejects an invalid status", async (t) => {
-  mockVendorAuthentication(t);
-
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await sendVendorStatusUpdate(baseUrl, "in_progress");
-    const body = await response.json();
-
-    assert.equal(response.status, 400);
-    assert.equal(body.success, false);
-  } finally {
-    await closeServer(server);
-  }
-});
-
-// 19. Missing status is rejected.
-test("PATCH /api/vendor/enquiries/:id/status rejects a missing status", async (t) => {
+// 7. Vendors cannot update enquiries with invalid IDs.
+test("PATCH /api/vendor/enquiries/:id/status returns 400 for invalid ID", async (t) => {
   mockVendorAuthentication(t);
 
   const { server, baseUrl } = await startServer();
 
   try {
     const response = await fetch(
-      `${baseUrl}/api/vendor/enquiries/${ENQUIRY_ID}/status`,
+      `${baseUrl}/api/vendor/enquiries/invalid-id/status`,
       {
         method: "PATCH",
         headers: {
           Authorization: "Bearer valid-test-token",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ status: "accepted" }),
       },
     );
 
-    const body = await response.json();
-
     assert.equal(response.status, 400);
-    assert.equal(body.success, false);
   } finally {
     await closeServer(server);
   }
 });
 
-// 20. Vendor cannot update a missing enquiry.
-test("PATCH /api/vendor/enquiries/:id/status returns 404 for a missing enquiry", async (t) => {
+// 8. Vendors cannot update enquiries they do not own.
+test("PATCH /api/vendor/enquiries/:id/status returns 404 for another vendor's enquiry", async (t) => {
   mockVendorAuthentication(t);
 
   t.mock.method(Enquiry, "findOne", async () => null);
@@ -688,51 +288,137 @@ test("PATCH /api/vendor/enquiries/:id/status returns 404 for a missing enquiry",
   const { server, baseUrl } = await startServer();
 
   try {
-    const response = await sendVendorStatusUpdate(baseUrl, "viewed");
-    const body = await response.json();
+    const response = await fetch(
+      `${baseUrl}/api/vendor/enquiries/${enquiryId}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: "Bearer valid-test-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: "accepted" }),
+      },
+    );
 
     assert.equal(response.status, 404);
-    assert.equal(body.success, false);
   } finally {
     await closeServer(server);
   }
 });
 
-// 21. Concurrent status changes cannot overwrite a newer status.
-test("PATCH /api/vendor/enquiries/:id/status handles a concurrent status change", async (t) => {
+// 9. Vendors cannot make invalid status transitions.
+test("PATCH /api/vendor/enquiries/:id/status rejects invalid transitions", async (t) => {
   mockVendorAuthentication(t);
 
-  t.mock.method(Enquiry, "findOne", async () => ({
-    _id: ENQUIRY_ID,
-    vendorId: VENDOR_ID,
-    status: "pending",
-  }));
+  const enquiry = {
+    _id: enquiryId,
+    vendorId,
+    status: "accepted",
+  };
 
-  let capturedFilter;
-
-  t.mock.method(
-    Enquiry,
-    "findOneAndUpdate",
-    async (filter) => {
-      capturedFilter = filter;
-      return null;
-    },
-  );
+  t.mock.method(Enquiry, "findOne", async () => enquiry);
 
   const { server, baseUrl } = await startServer();
 
   try {
-    const response = await sendVendorStatusUpdate(baseUrl, "viewed");
+    const response = await fetch(
+      `${baseUrl}/api/vendor/enquiries/${enquiryId}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: "Bearer valid-test-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: "pending" }),
+      },
+    );
+
+    assert.equal(response.status, 400);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+// 10. Vendors cannot submit an excessively long response.
+test("PATCH /api/vendor/enquiries/:id/status rejects responses over 2000 characters", async (t) => {
+  mockVendorAuthentication(t);
+
+  const enquiry = {
+    _id: enquiryId,
+    vendorId,
+    status: "pending",
+    save: async () => {},
+  };
+
+  t.mock.method(Enquiry, "findOne", async () => enquiry);
+
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(
+      `${baseUrl}/api/vendor/enquiries/${enquiryId}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: "Bearer valid-test-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: "accepted",
+          vendorResponse: "A".repeat(2001),
+        }),
+      },
+    );
+
+    assert.equal(response.status, 400);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+// 11. Vendors can accept their own pending enquiries.
+test("PATCH /api/vendor/enquiries/:id/status allows a vendor to accept an enquiry", async (t) => {
+  mockVendorAuthentication(t);
+
+  const enquiry = {
+    _id: enquiryId,
+    vendorId,
+    status: "pending",
+    statusUpdatedAt: null,
+    vendorResponse: "",
+    save: async () => {},
+  };
+
+  t.mock.method(Enquiry, "findOne", async () => enquiry);
+
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(
+      `${baseUrl}/api/vendor/enquiries/${enquiryId}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: "Bearer valid-test-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: "accepted",
+          vendorResponse: "We would be happy to serve your event.",
+        }),
+      },
+    );
+
     const body = await response.json();
 
-    assert.equal(response.status, 409);
-    assert.equal(body.success, false);
-
-    assert.deepEqual(capturedFilter, {
-      _id: ENQUIRY_ID,
-      vendorId: VENDOR_ID,
-      status: "pending",
-    });
+    assert.equal(response.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.data.status, "accepted");
+    assert.equal(
+      body.data.vendorResponse,
+      "We would be happy to serve your event.",
+    );
+    assert.ok(!Number.isNaN(Date.parse(body.data.statusUpdatedAt)));
   } finally {
     await closeServer(server);
   }

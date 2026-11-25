@@ -1,17 +1,8 @@
+
 const express = require("express");
 
-const {
-  verifyFirebaseToken,
-} = require("../middleware/firebaseAuth");
-
-const {
-  requireAuth,
-} = require("../middleware/requireAuth");
-
-const {
-  requireRole,
-} = require("../middleware/requireRole");
-
+const { verifyFirebaseToken } = require("../middleware/firebaseAuth");
+const { requireAuth } = require("../middleware/requireAuth");
 const {
   requireApprovedVendor,
 } = require("../middleware/requireApprovedVendor");
@@ -24,22 +15,21 @@ const {
 
 const router = express.Router();
 
-// All vendor enquiry endpoints require an authenticated,
-// registered, approved and active vendor.
+// All vendor enquiry routes require an authenticated,
+// approved, active vendor account.
 router.use(
   verifyFirebaseToken,
   requireAuth,
-  requireRole("vendor"),
-  requireApprovedVendor,
+  requireApprovedVendor
 );
 
-// Retrieve enquiries received by the logged-in vendor.
+// GET /api/vendor/enquiries
 router.get("/", getVendorEnquiries);
 
-// Update the status of an enquiry received by the logged-in vendor.
-router.patch("/:id/status", updateVendorEnquiryStatus);
-
-// Retrieve one enquiry addressed to the logged-in vendor.
+// GET /api/vendor/enquiries/:id
 router.get("/:id", getVendorEnquiryById);
+
+// PATCH /api/vendor/enquiries/:id/status
+router.patch("/:id/status", updateVendorEnquiryStatus);
 
 module.exports = router;

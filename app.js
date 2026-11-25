@@ -1,4 +1,4 @@
-
+﻿
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
@@ -75,7 +75,6 @@ app.use("/api/enquiries", enquiryRoutes);
 app.use("/api/vendor/enquiries", vendorEnquiryRoutes);
 app.use("/api/vendor/dashboard", vendorDashboardRoutes);
 app.use("/api/admin/vendors", adminVendorRoutes);
-
 // Handle unknown routes.
 app.use((req, res) => {
   res.status(404).json({
