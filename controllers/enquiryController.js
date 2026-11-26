@@ -8,9 +8,11 @@ const Enquiry = require("../models/Enquiry");
 
 const { enquiryCreateSchema } = require("../validators/enquiryValidator");
 
+// CREATE ENQUIRY
+// POST /api/enquiries
+
 async function createEnquiry(req, res, next) {
   try {
-    // 1. Validate the customer's request.
     const validation = enquiryCreateSchema.safeParse(req.body);
 
     if (!validation.success) {
@@ -35,7 +37,6 @@ async function createEnquiry(req, res, next) {
       message,
     } = validation.data;
 
-    // 2. Find the authenticated customer's profile.
     const customer = await Customer.findOne({
       userId: req.user.userId,
     });
@@ -47,7 +48,6 @@ async function createEnquiry(req, res, next) {
       });
     }
 
-    // 3. Retrieve the customer's verified account details.
     const user = await User.findById(req.user.userId);
 
     if (!user) {
@@ -57,7 +57,6 @@ async function createEnquiry(req, res, next) {
       });
     }
 
-    // 4. Find an available, approved vendor.
     const vendor = await Vendor.findOne({
       _id: vendorId,
       approvalStatus: "approved",
@@ -72,8 +71,6 @@ async function createEnquiry(req, res, next) {
       });
     }
 
-    // 5. Check that the selected event type is active
-    // and supported by this vendor.
     const eventType = await EventType.findOne({
       _id: eventTypeId,
       isActive: true,
@@ -97,8 +94,6 @@ async function createEnquiry(req, res, next) {
       });
     }
 
-    // 6. Check compatibility between the vendor's main categories
-    // and the selected event type.
     const vendorCategoryIds = vendor.categoryIds.map((id) =>
       id.toString()
     );
@@ -118,16 +113,15 @@ async function createEnquiry(req, res, next) {
       });
     }
 
-    // 7. Validate that requested services are actually offered
-    // by this vendor under their selected main categories.
     const serviceIds = requiredServices || [];
 
     if (serviceIds.length > 0) {
       const vendorServices = vendor.selectedCategories.flatMap(
-        (selection) => selection.serviceIds.map((serviceId) => ({
-          serviceId: serviceId.toString(),
-          categoryId: selection.categoryId.toString(),
-        }))
+        (selection) =>
+          selection.serviceIds.map((serviceId) => ({
+            serviceId: serviceId.toString(),
+            categoryId: selection.categoryId.toString(),
+          }))
       );
 
       const offeredServiceIds = new Set(
@@ -141,13 +135,12 @@ async function createEnquiry(req, res, next) {
       if (unavailableServices.length > 0) {
         return res.status(400).json({
           success: false,
-          message: "One or more selected services are not offered by this vendor",
+          message:
+            "One or more selected services are not offered by this vendor",
           unavailableServices,
         });
       }
 
-      // 8. Confirm requested services are still active child categories
-      // and belong to the vendor's selected main categories.
       const services = await Category.find({
         _id: { $in: serviceIds },
         isActive: true,
@@ -168,7 +161,8 @@ async function createEnquiry(req, res, next) {
         return (
           !validServices.has(serviceId) ||
           !vendorService ||
-          validServices.get(serviceId) !== vendorService.categoryId
+          validServices.get(serviceId) !== vendorService.categoryId ||
+          !allowedCategoryIds.includes(vendorService.categoryId)
         );
       });
 
@@ -180,7 +174,6 @@ async function createEnquiry(req, res, next) {
       }
     }
 
-    // 9. Create the enquiry with customer identity snapshots.
     const enquiry = await Enquiry.create({
       customerId: customer._id,
       vendorId: vendor._id,
@@ -197,7 +190,6 @@ async function createEnquiry(req, res, next) {
       status: "pending",
     });
 
-    // 10. Return the created enquiry.
     return res.status(201).json({
       success: true,
       message: "Enquiry created successfully",
@@ -208,6 +200,199 @@ async function createEnquiry(req, res, next) {
   }
 }
 
+// GET CUSTOMER ENQUIRIES
+// GET /api/enquiries/my
+
+async function getCustomerEnquiries(req, res, next) {
+  try {
+    const customer = await Customer.findOne({
+      userId: req.user.userId,
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer profile not found",
+      });
+    }
+
+    const enquiries = await Enquiry.find({
+      customerId: customer._id,
+    }).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      message: "Customer enquiries retrieved successfully",
+      data: enquiries,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// GET ENQUIRY BY ID
+// GET /api/enquiries/:id
+
+async function getEnquiryById(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid enquiry ID",
+      });
+    }
+
+    const enquiry = await Enquiry.findById(id);
+
+    if (!enquiry) {
+      return res.status(404).json({
+        success: false,
+        message: "Enquiry not found",
+      });
+    }
+
+    if (req.user.role === "customer") {
+      const customer = await Customer.findOne({
+        userId: req.user.userId,
+      });
+
+      if (!customer) {
+        return res.status(404).json({
+          success: false,
+          message: "Customer profile not found",
+        });
+      }
+
+      if (enquiry.customerId.toString() !== customer._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to view this enquiry",
+        });
+      }
+    } else if (req.user.role === "vendor") {
+      if (
+        !req.user.vendorId ||
+        enquiry.vendorId.toString() !== req.user.vendorId
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to view this enquiry",
+        });
+      }
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view this enquiry",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Enquiry retrieved successfully",
+      data: enquiry,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// CANCEL CUSTOMER ENQUIRY
+// PATCH /api/enquiries/:id/cancel
+
+async function cancelEnquiry(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    // 1. Validate the enquiry ID.
+    if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid enquiry ID",
+      });
+    }
+
+    // 2. Find the authenticated customer's profile.
+    const customer = await Customer.findOne({
+      userId: req.user.userId,
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer profile not found",
+      });
+    }
+
+    // 3. Find the enquiry.
+    const enquiry = await Enquiry.findById(id);
+
+    if (!enquiry) {
+      return res.status(404).json({
+        success: false,
+        message: "Enquiry not found",
+      });
+    }
+
+    // 4. Verify that this enquiry belongs to the customer.
+    if (enquiry.customerId.toString() !== customer._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to cancel this enquiry",
+      });
+    }
+
+    // 5. Only pending enquiries can be cancelled.
+    if (enquiry.status !== "pending") {
+      return res.status(409).json({
+        success: false,
+        message: "Only pending enquiries can be cancelled",
+      });
+    }
+
+    // 6. Update only if the enquiry is still pending.
+    // This prevents cancellation if its status changes
+    // between the initial read and the database update.
+    const cancelledEnquiry = await Enquiry.findOneAndUpdate(
+      {
+        _id: id,
+        customerId: customer._id,
+        status: "pending",
+      },
+      {
+        $set: {
+          status: "cancelled",
+          statusUpdatedAt: new Date(),
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!cancelledEnquiry) {
+      return res.status(409).json({
+        success: false,
+        message: "This enquiry can no longer be cancelled",
+      });
+    }
+
+    // 7. Return the updated enquiry.
+    return res.status(200).json({
+      success: true,
+      message: "Enquiry cancelled successfully",
+      data: cancelledEnquiry,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   createEnquiry,
+  getCustomerEnquiries,
+  getEnquiryById,
+  cancelEnquiry,
 };
